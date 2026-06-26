@@ -29,9 +29,10 @@ from each other directly; only `backends/` and `shared/` are shared dependencies
 | Backend            | Type      | Env var to swap       |
 |---------------------|-----------|------------------------|
 | OpenAI embeddings   | Stateless callable (`EmbedFn`) | `EMBEDDING_BACKEND=openai` |
-| pgvector            | Stateful `Protocol` (`VectorStoreBackend`) | `DATABASE_URL` |
+| pgvector            | Stateful `Protocol` (`VectorStoreBackend`), via SQLAlchemy Core async | `VECTORSTORE_BACKEND=pgvector`, `DATABASE_URL` |
 
-See [ADR-004](docs/adr/ADR-004-swappable-backends.md) for the design rationale.
+See [ADR-004](docs/adr/ADR-004-pgvector.md) for the design rationale, including why
+the vector store client is SQLAlchemy Core async rather than raw `asyncpg`.
 
 ## How to run
 

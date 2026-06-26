@@ -139,3 +139,89 @@ SET hnsw.ef_search = 40;  -- default 40, increase for higher recall at cost of l
 - HNSW index must be rebuilt (`REINDEX`) after bulk inserts > 10% of dataset size
   to maintain recall quality. Add a `make reindex` target when dataset exceeds
   10K vectors.
+
+## Addendum: SQLAlchemy Core async as the database client (not raw asyncpg)
+
+### Context
+
+`PgVectorBackend` was first implemented directly on `asyncpg.Pool`. This surfaced a
+real bug, not a style nitpick: `asyncpg.create_pool()` returns a pool bound to the
+event loop it was created in. The ingestion pipeline built the pool inside one
+`asyncio.run()` call (in the backend factory) and then called `backend.upsert()` /
+`.search()` from synchronous wrapper methods that each did their own `asyncio.run()`.
+Every call after the first ran in a **new** event loop, while the pool still held
+connections registered against the **first, already-closed** loop — a setup that
+fails with `RuntimeError` or leaks connections depending on asyncpg version and
+timing. Nothing in the codebase ever called `pool.close()` either, so even a
+correctly-scoped pool would leak file descriptors over the life of a long-running
+process (e.g. the future agent/retrieval slice, which calls `search()` many times
+per request).
+
+### Options considered
+
+- **Option A — keep raw `asyncpg`, fix lifecycle by hand.** Thread a single
+  event loop through the whole pipeline manually, add an explicit `pool.close()`,
+  and make every backend method `async def` so nothing nested calls `asyncio.run()`
+  again. Works, but the discipline ("exactly one loop, exactly one pool, dispose
+  once") is enforced by convention only — every new call site can reintroduce the
+  same bug by reaching for `asyncio.run()` out of habit.
+- **Option B — SQLAlchemy Core async (`create_async_engine`, `text()`), no ORM.**
+  `AsyncEngine` owns the connection pool. Critically, `create_async_engine()` does
+  **not** require an event loop to construct — the pool is opened lazily on first
+  use, inside whichever loop is live at query time. This removes the "pool created
+  in loop A, used in loop B" failure mode structurally instead of by convention.
+  Disposal is one explicit call: `await engine.dispose()`. SQL stays as hand-written
+  `text()` statements — no declarative models, no sessions, no relationships. This
+  keeps the "no ORM" stance from this ADR's original decision: SQLAlchemy is used
+  here purely as a connection-pool manager with a thin execution API, not as an
+  object-relational mapper.
+- **Option C — SQLAlchemy ORM (declarative models, async sessions).** Rejected for
+  the same reason LangChain/LlamaIndex are rejected in ADR-005: it would map
+  `Chunk`/`Document` onto ORM model classes with `Mapped[...]` fields and
+  `relationship()` for `parent_id`, duplicating the Pydantic domain types in this
+  codebase's `ingestion/types.py` and adding session-management concepts (identity
+  map, unit of work) that the actual workload — a handful of upsert/search/delete
+  queries — does not need.
+
+### Decision
+
+Chose **Option B — SQLAlchemy Core async as the connection layer, raw `text()` SQL,
+no ORM models.**
+
+`pgvector` integrates with SQLAlchemy the same way it integrates with asyncpg
+(`pgvector.sqlalchemy.Vector` mirrors `pgvector.asyncpg.register_vector`), so this
+is not a trade against pgvector itself — only against which Python client drives
+the connection. asyncpg remains installed as SQLAlchemy's underlying async driver
+(`postgresql+asyncpg://` in `DATABASE_URL`); nothing about the wire protocol changes.
+
+The deciding factor is lifecycle, not ergonomics: `AsyncEngine` makes "one pool,
+built once, disposed once, from whichever loop is running" the natural way to use
+the API, rather than something the caller must remember to do correctly across
+every backend implementation that gets added later (Qdrant, or a second pgvector
+backend for tests).
+
+### Consequences
+
+**Gain:**
+- The loop-mismatch class of bug is now structurally hard to write — there is no
+  `asyncio.run()` left inside `PgVectorBackend` or the vectorstore factory.
+- `VectorStoreBackend.dispose()` is now part of the Protocol — every backend
+  implementation is required to expose a way to release its resources, and
+  `pipeline.py` calls it in a `finally` block around the single `asyncio.run()`
+  that drives the whole ingestion run.
+- `backends/vectorstore/factory.py::make_vectorstore_backend()` is synchronous —
+  building the engine does not need an event loop, simplifying dependency wiring
+  in `pipeline.py` (no nested `asyncio.run()` just to construct dependencies).
+
+**Lose:**
+- One more dependency (`sqlalchemy[asyncio]`) beyond `asyncpg` + `pgvector`.
+- `text()` parameter binding (`:name` placeholders, dict params) reads slightly
+  less directly than asyncpg's positional `$1, $2` — a small readability cost for
+  the lifecycle guarantee.
+
+**Technical debt:**
+- If a second vector store backend is added (e.g. Qdrant per Option B in the main
+  decision above), it must implement `dispose()` too, even though e.g. a Qdrant
+  HTTP client may not need pool lifecycle management the same way — the Protocol
+  method exists for the lowest common denominator (anything stateful must be
+  released).

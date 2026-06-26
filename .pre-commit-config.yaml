@@ -6,17 +6,11 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.1.0
+  - repo: local
     hooks:
       - id: mypy
+        name: mypy
+        entry: uv run mypy src/
+        language: system
         pass_filenames: false
-        args: ["src/"]
-        additional_dependencies:
-          - pydantic>=2.0
-          - pydantic-settings>=2.0
-          - pytest>=8.3
-          - testcontainers[postgres]>=4.8
-          - asyncpg>=0.30
-          - structlog>=24.4
-          - ragas>=0.2,<0.4
+        types: [python]
