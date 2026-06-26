@@ -4,6 +4,7 @@ networks:
 
 volumes:
   postgres-data:
+  app-venv:
 
 services:
   postgres:
@@ -29,6 +30,7 @@ services:
     build: .
     volumes:
       - .:/app
+      - app-venv:/app/.venv
     working_dir: /app
     networks:
       - rag-network
@@ -36,4 +38,4 @@ services:
       postgres:
         condition: service_healthy
     env_file: .env
-    command: ["uv", "run", "python", "-m", "rag.agent.pipeline"]
+    command: ["python", "-m", "rag.agent.pipeline"]
