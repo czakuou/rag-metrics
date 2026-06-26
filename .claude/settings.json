@@ -4,7 +4,24 @@
       "Bash(/Users/czaku/.cache/pre-commit/repo2lqf1le9/py_env-python3.13/bin/python -m mypy src/rag/backends/vectorstore/pgvector_backend.py)",
       "Read(//Users/czaku/.cache/pre-commit/**)",
       "Bash(docker build *)",
-      "Bash(docker rmi *)"
+      "Bash(docker rmi *)",
+      "Bash(python3 -)",
+      "Bash(python3 -c \"print\\(len\\(open\\('os-memory-management.md'\\).read\\(\\).split\\(\\)\\)\\)\")",
+      "Bash(.venv/bin/python -c \"import ragas; print\\(ragas.__version__\\)\")",
+      "Bash(.venv/bin/python -c \"from ragas import evaluate; import inspect; print\\(inspect.signature\\(evaluate\\)\\)\")",
+      "Bash(.venv/bin/python -c \"from ragas import EvaluationDataset; print\\(EvaluationDataset\\)\")",
+      "Bash(.venv/bin/python -c \"from ragas.metrics import faithfulness, answer_relevancy, context_precision; print\\(faithfulness, answer_relevancy, context_precision\\)\")",
+      "Bash(.venv/bin/pip show *)",
+      "Bash(.venv/bin/python -m pip list)",
+      "Bash(uv sync *)",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(python3 -c ' *)",
+      "Bash(xargs -I{} basename {})",
+      "Bash(.venv/bin/pip index *)",
+      "Bash(curl -s https://pypi.org/pypi/ragas/json)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(sorted\\(d['releases'].keys\\(\\), key=lambda v: tuple\\(int\\(x\\) if x.isdigit\\(\\) else 0 for x in v.split\\('.'\\)\\)\\)[-15:]\\)\")",
+      "Bash(uv lock *)",
+      "Bash(curl -s https://pypi.org/pypi/langchain-community/json)"
     ]
   }
 }

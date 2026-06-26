@@ -1,0 +1,39 @@
+name: Eval gate
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run RAGAS eval suite
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # TODO: the dummy pipeline never queries the database — once the real
+          # RAG pipeline is wired in here, add a postgres service container.
+          DATABASE_URL: "postgresql+asyncpg://rag:test@localhost:5432/rag_db"
+          EMBEDDING_BACKEND: "openai"
+          EMBEDDING_MODEL: "text-embedding-3-small"
+          LLM_MODEL: "gpt-4o-mini"
+          EVAL_FAITHFULNESS_THRESHOLD: "0.70"
+          EVAL_ANSWER_RELEVANCY_THRESHOLD: "0.65"
+          EVAL_CONTEXT_PRECISION_THRESHOLD: "0.65"
+        run: uv run python -m rag.evals.pipeline
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: data/baseline_scores.json

@@ -1,14 +1,22 @@
-"""Runs the agent over the golden dataset and gates results against thresholds."""
+"""Composes dataset collection, RAGAS evaluation, and scoring into one eval run."""
 
-from rag.agent.tools import RetrieveToolFn
-from rag.evals.types import EvalResult, GoldenExample
+from ragas import evaluate
+from ragas.dataset_schema import EvaluationResult
 
-# TODO: implement
+from rag.evals.collector import PipelineFn, build_evaluation_dataset
+from rag.evals.metrics import RAGAS_METRICS
+from rag.evals.scoring import score_report
+from rag.evals.types import EvalReport, EvalSample
 
 
-def run_eval(examples: list[GoldenExample], retrieve: RetrieveToolFn) -> EvalResult:
-    raise NotImplementedError
+def run_evals(
+    samples: list[EvalSample],
+    pipeline_fn: PipelineFn,
+    thresholds: dict[str, float],
+) -> EvalReport:
+    dataset, row_samples, failed_samples = build_evaluation_dataset(samples, pipeline_fn)
 
+    result = evaluate(dataset, metrics=RAGAS_METRICS)
+    assert isinstance(result, EvaluationResult)  # return_executor=False guarantees this
 
-def gate(result: EvalResult) -> bool:
-    raise NotImplementedError
+    return score_report(row_samples, result, thresholds, len(samples), failed_samples)

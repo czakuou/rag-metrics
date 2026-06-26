@@ -65,6 +65,8 @@ class ChunkerService:
 
 Exceptions:
 - Pydantic models (data types) → always classes
+- **Value Objects** (Pydantic models representing a domain concept, not just a data bag) →
+  always classes, and they may carry domain logic — see "Value Objects" below
 - Pydantic Settings (config) → always a class
 - Backends → `Protocol` if the backend is stateful, callable if stateless
 
@@ -101,6 +103,94 @@ class VectorStoreBackend(Protocol):
 
 Business logic (retrieval, ingestion) never imports concrete backends — only the type from `protocol.py`.
 The backend is injected from `config.py` at the `pipeline.py` level.
+
+### Value Objects — push domain logic into the type, not a function next to it
+
+If a value has an invariant (e.g. "passed is always derived from score and threshold") or a
+collection of values needs the same operation applied to all of them (e.g. "all metrics passed",
+"which questions failed any metric"), that belongs on the type as a property or method — not as
+a loose function in a sibling module that reads the type's fields from outside.
+
+This keeps the invariant impossible to violate (you cannot construct an inconsistent `passed`
+because it is computed, never stored) and hides iteration behind a name that says what the loop
+means, instead of a bare `for` a caller has to re-read every time.
+
+```python
+# ✅ DO — the invariant lives on the type; "passed" can never disagree with score/threshold
+class MetricScore(BaseModel):
+    name: str
+    score: float
+    threshold: float
+
+    @property
+    def passed(self) -> bool:
+        return self.score >= self.threshold
+
+# A composite Value Object hides the loop over individual Value Objects.
+class MetricScores(BaseModel):
+    scores: list[MetricScore]
+
+    @property
+    def all_passed(self) -> bool:
+        return all(metric_score.passed for metric_score in self.scores)
+
+# ❌ DON'T — passed is a plain field set by a function elsewhere; nothing stops it
+# from drifting out of sync with score/threshold, and "all passed" is a loop the
+# caller has to write (and get right) every time it's needed.
+class MetricScore(BaseModel):
+    name: str
+    score: float
+    passed: bool  # set by score_report() — could be wrong, nothing enforces it
+
+def all_passed(scores: list[MetricScore]) -> bool:
+    return all(s.passed for s in scores)
+```
+
+A plain function is still right for *composing* Value Objects (turning an external result into
+domain types) — that is orchestration, not domain logic, and the "one function, one
+responsibility" rule below still applies to it.
+
+### One function, one responsibility
+
+A function does one thing: fetch data, transform data, or produce a side effect (I/O, print, write).
+Never two of these at once. If a function both calls an external boundary (LLM, DB, pipeline_fn)
+*and* computes a result from it, split it: one function to fetch, one pure function to compute.
+
+```python
+# ✅ DO — fetch is its own function; computing the report is delegated to Value Objects
+# (MetricScores, EvalReport), so score_report only orchestrates, it doesn't loop or decide.
+def build_evaluation_dataset(samples: list[Sample], pipeline_fn: PipelineFn) -> Dataset: ...
+
+def score_report(dataset: Dataset, result: RagasResult, thresholds: dict[str, float]) -> Report:
+    metric_scores = MetricScores.from_ragas_result(result, thresholds)
+    return EvalReport.from_metric_scores(metric_scores, ...)
+
+def run_evals(samples, pipeline_fn, thresholds) -> Report:
+    dataset = build_evaluation_dataset(samples, pipeline_fn)
+    result = evaluate(dataset)
+    return score_report(dataset, result, thresholds)
+
+# ❌ DON'T — one function runs the pipeline AND aggregates scores AND decides pass/fail
+def run_evals(samples, pipeline_fn, thresholds) -> Report:
+    for sample in samples: ...        # fetch
+    result = evaluate(...)
+    for metric in metrics: ...        # compute + decide, mixed into the same function
+```
+
+Same rule applies to CLI output: formatting (pure, string in → string out) is never mixed with
+printing (`print`) or writing files. Put formatting helpers in `shared/` if more than one
+slice needs them (e.g. `shared/cli.py::render_table`); keep them in the slice if only one
+pipeline.py consumes them.
+
+```python
+# ✅ DO
+def render_table(headers: list[str], rows: list[list[str]]) -> str: ...   # shared/cli.py, pure
+print(render_table(headers, rows))                                        # pipeline.py, the only print
+
+# ❌ DON'T — formatting and the print() are fused, can't be tested without capturing stdout
+def _print_summary(report: Report) -> None:
+    print(f"| {report.metric:<25} | ...")
+```
 
 ---
 

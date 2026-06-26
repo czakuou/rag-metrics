@@ -10,7 +10,7 @@ dependencies = [
     "asyncpg>=0.30",
     "pgvector>=0.3",
     "litellm>=1.50",
-    "ragas>=0.2",
+    "ragas>=0.2,<0.4",
     "structlog>=24.4",
     "typer>=0.13",
 ]
@@ -26,6 +26,11 @@ dev = [
     "pre-commit>=4.0",
     "testcontainers[postgres]>=4.8",
 ]
+
+[tool.uv]
+# ragas 0.3.x imports langchain_community.chat_models.vertexai, which was
+# removed in langchain-community 0.4.0 — pin below that until ragas drops it.
+constraint-dependencies = ["langchain-community<0.4"]
 
 [build-system]
 requires = ["hatchling"]
@@ -57,3 +62,6 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: marks tests that call external APIs (deselect with -m 'not integration')",
+]

@@ -19,3 +19,4 @@ repos:
           - testcontainers[postgres]>=4.8
           - asyncpg>=0.30
           - structlog>=24.4
+          - ragas>=0.2,<0.4

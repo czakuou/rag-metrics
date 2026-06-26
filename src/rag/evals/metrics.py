@@ -1,10 +1,5 @@
-"""Computes RAGAS metrics for a batch of agent answers."""
+"""RAGAS metric definitions."""
 
-from rag.agent.types import AgentAnswer
-from rag.evals.types import EvalResult, GoldenExample
+from ragas.metrics import Metric, answer_relevancy, context_precision, faithfulness
 
-# TODO: implement
-
-
-def compute_metrics(examples: list[GoldenExample], answers: list[AgentAnswer]) -> EvalResult:
-    raise NotImplementedError
+RAGAS_METRICS: list[Metric] = [faithfulness, answer_relevancy, context_precision]
