@@ -1,0 +1,319 @@
+# CLAUDE.md — agent instructions
+
+> Read this file in full before writing anything.
+> Return to it when you are unsure about a design decision.
+
+---
+
+## Language rules
+
+- **All code, comments, docstrings, ADRs, and documentation must be written in English.**
+- The user may communicate with you in Polish — that is fine. Respond in Polish if they write in Polish.
+- Never mix languages inside a single file. Polish conversation, English artefacts — always.
+
+---
+
+## What this project is
+
+Agentic RAG system built on a private Obsidian vault.
+Stack: Python 3.13+, pgvector, LiteLLM, BAML, RAGAS, GitHub Actions.
+Philosophy: **evals-first** — every pipeline change is measurable via a CI gate.
+
+---
+
+## Project structure — vertical slices
+
+```
+src/rag/
+├── config.py           # Pydantic Settings — single source of configuration
+├── ingestion/          # slice: vault → chunks → vector store
+├── retrieval/          # slice: query → rerank → grade
+├── agent/              # slice: ReAct loop → answer
+├── evals/              # slice: golden dataset → RAGAS → CI gate
+├── backends/           # swappable: embedding/, vectorstore/
+└── shared/             # only: logging.py, tracing.py
+```
+
+**Rule:** each slice is self-contained. Read one folder — understand the entire domain.
+
+Every slice contains:
+- `types.py` — domain types for this slice
+- `pipeline.py` — main function invoked by CLI (`python -m rag.<slice>.pipeline`)
+- domain function files (`loader.py`, `chunker.py`, etc.)
+
+---
+
+## Code style — functional core
+
+### Write functions, not classes
+
+```python
+# ✅ DO
+def chunk(doc: Document, strategy: ChunkStrategy) -> list[Chunk]:
+    match strategy:
+        case ChunkStrategy.FIXED:        return _fixed_size(doc)
+        case ChunkStrategy.PARENT_CHILD: return _parent_child(doc)
+        case ChunkStrategy.SEMANTIC:     return _semantic(doc)
+
+# ❌ DON'T
+class ChunkerService:
+    def __init__(self, strategy: ChunkStrategy) -> None:
+        self.strategy = strategy
+    def chunk(self, doc: Document) -> list[Chunk]:
+        ...
+```
+
+Exceptions:
+- Pydantic models (data types) → always classes
+- Pydantic Settings (config) → always a class
+- Backends → `Protocol` if the backend is stateful, callable if stateless
+
+### Swappable backends — two patterns
+
+**Stateless backend = plain callable (preferred)**
+
+```python
+# backends/embedding/protocol.py
+from collections.abc import Callable
+
+type EmbedFn = Callable[[list[str]], list[list[float]]]
+
+# backends/embedding/openai_backend.py
+from rag.backends.embedding.protocol import EmbedFn
+
+def make_openai_backend(model: str = "text-embedding-3-small") -> EmbedFn:
+    def embed(texts: list[str]) -> list[list[float]]:
+        ...  # call OpenAI API
+    return embed
+```
+
+**Stateful backend = Protocol (when you need a connection pool, cache, etc.)**
+
+```python
+# backends/vectorstore/protocol.py
+from typing import Protocol
+
+class VectorStoreBackend(Protocol):
+    def upsert(self, chunks: list[EmbeddedChunk]) -> None: ...
+    def search(self, vector: list[float], k: int) -> list[Chunk]: ...
+    def delete(self, ids: list[str]) -> None: ...
+```
+
+Business logic (retrieval, ingestion) never imports concrete backends — only the type from `protocol.py`.
+The backend is injected from `config.py` at the `pipeline.py` level.
+
+---
+
+## Typing — mandatory, complete
+
+### Rules
+
+- Every public function has full type annotations: arguments + return type
+- No `Any` without a `# type: ignore[...]` comment with a reason
+- No bare `dict` as a domain type — always a Pydantic model or TypedDict
+- Use the `type` statement (Python 3.12+) for type aliases that appear more than once
+
+```python
+# ✅ DO
+from pydantic import BaseModel
+
+type EmbeddingVector = list[float]
+type ChunkBatch = list[Chunk]
+
+class Chunk(BaseModel):
+    id: str
+    content: str
+    metadata: ChunkMetadata
+    embedding: EmbeddingVector | None = None
+
+def embed(chunks: ChunkBatch, backend: EmbedFn) -> ChunkBatch:
+    ...
+
+# ❌ DON'T — legacy syntax
+from typing import TypeAlias
+EmbeddingVector: TypeAlias = list[float]
+
+# ❌ DON'T
+def embed(chunks, backend):
+    ...
+
+# ❌ DON'T
+def embed(chunks: list[dict], backend: Any) -> list[dict]:
+    ...
+```
+
+### Where types live
+
+Domain types for a slice → `<slice>/types.py`
+Types shared across slices → they don't exist (that's a signal you need a new slice)
+Exception: types from `backends/*/protocol.py` are imported by `pipeline.py` in slices
+
+---
+
+## Tests — BDD, no mocks, no implementation details
+
+### Philosophy
+
+Test **behaviour**, not implementation.
+If you refactor internal logic without changing the contract → tests must not break.
+
+### Test structure: Given / When / Then
+
+```python
+# tests/ingestion/test_chunker.py
+from rag.ingestion.chunker import chunk
+from rag.ingestion.types import Chunk, ChunkStrategy, Document, DocumentMetadata
+
+
+def test_fixed_chunker_splits_long_document_into_multiple_chunks():
+    # Given
+    long_document = Document(
+        content="word " * 2000,  # 2000 words — guaranteed to exceed chunk limit
+        metadata=DocumentMetadata(source="vault/test.md"),
+    )
+
+    # When
+    chunks = chunk(long_document, strategy=ChunkStrategy.FIXED)
+
+    # Then
+    assert len(chunks) > 1
+    assert all(isinstance(c, Chunk) for c in chunks)
+    assert all(len(c.content.split()) <= 600 for c in chunks)  # max 512 + overlap
+
+
+def test_chunker_preserves_document_source_in_metadata():
+    # Given
+    doc = Document(
+        content="A short note about RAG.",
+        metadata=DocumentMetadata(source="vault/rag.md"),
+    )
+
+    # When
+    chunks = chunk(doc, strategy=ChunkStrategy.FIXED)
+
+    # Then
+    assert all(c.metadata.source == "vault/rag.md" for c in chunks)
+```
+
+### What NOT to test
+
+```python
+# ❌ Never test private functions
+from rag.ingestion.chunker import _fixed_size  # NEVER
+
+# ❌ Never assert that a specific method was called
+mock_backend.embed.assert_called_once_with(...)  # NEVER
+
+# ❌ Never mock what you can build
+@patch("rag.ingestion.chunker.SomeInternalClass")  # NEVER
+
+# ❌ Never inspect internal state
+assert chunks[0]._internal_state == "processed"  # NEVER
+```
+
+### When a mock is acceptable
+
+Only at the boundary of infrastructure you do not control:
+- External APIs (OpenAI, LangFuse) — use `respx` or `pytest-httpx`
+- Database — use a real test database (Docker), not a mock
+
+```python
+# ✅ Acceptable mock — HTTP boundary with an external API
+import httpx
+import respx
+
+@respx.mock
+def test_openai_backend_returns_embedding_vectors():
+    respx.post("https://api.openai.com/v1/embeddings").mock(
+        return_value=httpx.Response(200, json={"data": [{"embedding": [0.1, 0.2, 0.3]}]})
+    )
+    ...
+```
+
+### Test naming
+
+Format: `test_<what>_<condition>_<expected_result>`
+
+```python
+# ✅
+def test_reranker_returns_chunks_sorted_by_relevance_score(): ...
+def test_grader_marks_chunk_as_irrelevant_when_score_below_threshold(): ...
+def test_react_loop_stops_after_max_iterations(): ...
+
+# ❌
+def test_reranker(): ...
+def test_chunk_1(): ...
+def test_it_works(): ...
+```
+
+---
+
+## Documentation — when and what to update
+
+### After every change, check:
+
+| What you changed | What to update |
+|---|---|
+| New slice or removed slice | `README.md` (structure section) + `CLAUDE.md` (tree) |
+| New design decision (new backend, new metric, strategy change) | `docs/adr/ADR-XXX-<topic>.md` (new ADR) |
+| Threshold change in `evals/thresholds.py` | inline comment with reason + update `data/baseline_scores.json` |
+| New variable in `config.py` | `.env.example` — always updated in the same commit |
+| CLI change (new command, new argument) | `README.md` "How to run" section |
+| New backend (embedding or vectorstore) | `docs/adr/` + `README.md` "Backends" section |
+
+### ADR format
+
+File: `docs/adr/ADR-NNN-<slug>.md`
+
+```markdown
+# ADR-NNN: <Title>
+
+## Status
+Accepted | Deprecated | Superseded by ADR-XXX
+
+## Context
+What triggered this decision? What were the constraints?
+
+## Options considered
+- Option A — short description
+- Option B — short description
+
+## Decision
+Chose Option A because ...
+
+## Consequences
+What do we gain? What do we lose? What technical debt are we taking on?
+```
+
+---
+
+## Rules never to break
+
+1. **No untyped code** — mypy must pass clean
+2. **No slice without `types.py`** — domain types are documentation
+3. **No pipeline change without updating `data/baseline_scores.json`** — you must know if you regressed
+4. **No `utils/` or `helpers/`** — name what it does or put it in `shared/`
+5. **No cross-slice imports except from `backends/` and `shared/`** — a slice reads in isolation
+6. **Commit after every completed slice** — repo history is documentation for the recruiter
+7. **`.env.example` always current** — new Settings variable = immediate update in the same commit
+
+---
+
+## Quick reference
+
+```bash
+# Run ingestion
+make ingest
+
+# Run evals (same as CI)
+make eval
+
+# Run agent interactively
+make agent
+
+# Type check
+make typecheck   # uv run mypy src/
+
+# Run tests
+make test        # uv run pytest tests/ -v
+```

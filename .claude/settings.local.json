@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv --version)",
+      "Bash(curl -s https://api.github.com/repos/astral-sh/ruff-pre-commit/releases/latest)",
+      "Bash(curl -s https://api.github.com/repos/pre-commit/mirrors-mypy/releases/latest)",
+      "Bash(curl -s https://pypi.org/pypi/mypy/json)",
+      "Bash(python3 -c \"import json,sys; print\\(json.load\\(sys.stdin\\)['info']['version']\\)\")",
+      "Bash(curl -s \"https://api.github.com/repos/pre-commit/mirrors-mypy/tags\")",
+      "Bash(python3 -c \"import json,sys; tags=json.load\\(sys.stdin\\); print\\([t['name'] for t in tags[:5]]\\)\")",
+      "Bash(uv sync *)"
+    ]
+  }
+}

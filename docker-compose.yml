@@ -1,0 +1,39 @@
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432" # local dev only — remove in production
+
+  app:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    networks:
+      - rag-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    command: ["uv", "run", "python", "-m", "rag.agent.pipeline"]

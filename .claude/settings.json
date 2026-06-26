@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/Users/czaku/.cache/pre-commit/repo2lqf1le9/py_env-python3.13/bin/python -m mypy src/rag/backends/vectorstore/pgvector_backend.py)",
+      "Read(//Users/czaku/.cache/pre-commit/**)"
+    ]
+  }
+}
