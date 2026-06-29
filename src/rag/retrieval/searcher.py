@@ -2,10 +2,11 @@
 
 from rag.backends.embedding.protocol import EmbedFn
 from rag.backends.vectorstore.protocol import VectorStoreBackend
-from rag.ingestion.types import Chunk
-
-# TODO: implement
+from rag.ingestion.types import EmbeddedChunk
 
 
-def search(query: str, backend: VectorStoreBackend, embed_fn: EmbedFn, k: int) -> list[Chunk]:
-    raise NotImplementedError
+async def search(
+    query: str, backend: VectorStoreBackend, embed_fn: EmbedFn, k: int = 10
+) -> list[EmbeddedChunk]:
+    vector = embed_fn([query])[0]
+    return await backend.search(vector, k)

@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     vectorstore_backend: str = "pgvector"
     database_url: PostgresDsn
 
+    # Retrieval
+    retrieval_k: int = 10
+    retrieval_relevance_threshold: float = 0.5
+
     # Evals — CI gate thresholds
     eval_faithfulness_threshold: float = 0.70
     eval_answer_relevancy_threshold: float = 0.65

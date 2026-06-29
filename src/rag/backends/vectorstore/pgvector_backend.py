@@ -70,14 +70,14 @@ class PgVectorBackend:
                 ],
             )
 
-    async def search(self, vector: list[float], k: int) -> list[Chunk]:
+    async def search(self, vector: list[float], k: int) -> list[EmbeddedChunk]:
         async with self._engine.connect() as conn:
             await conn.execute(text("SET hnsw.ef_search = 40"))
             rows = (
                 await conn.execute(
                     text(
                         """
-                        SELECT id, content, document_id, chunk_index, strategy, parent_id
+                        SELECT id, content, document_id, chunk_index, strategy, parent_id, embedding
                         FROM chunks
                         WHERE embedding IS NOT NULL
                         ORDER BY embedding <=> :vector
@@ -88,7 +88,7 @@ class PgVectorBackend:
                 )
             ).mappings()
 
-            results: list[Chunk] = []
+            results: list[EmbeddedChunk] = []
             for row in rows:
                 content = row["content"]
                 if row["parent_id"] is not None:
@@ -106,16 +106,19 @@ class PgVectorBackend:
                         content = parent["content"]
 
                 results.append(
-                    Chunk(
-                        id=row["id"],
-                        content=content,
-                        metadata=ChunkMetadata(
-                            source=Path(row["document_id"]),
-                            title=row["document_id"],
-                            chunk_index=row["chunk_index"],
-                            strategy=ChunkStrategy(row["strategy"]),
+                    EmbeddedChunk(
+                        chunk=Chunk(
+                            id=row["id"],
+                            content=content,
+                            metadata=ChunkMetadata(
+                                source=Path(row["document_id"]),
+                                title=row["document_id"],
+                                chunk_index=row["chunk_index"],
+                                strategy=ChunkStrategy(row["strategy"]),
+                            ),
+                            parent_id=row["parent_id"],
                         ),
-                        parent_id=row["parent_id"],
+                        embedding=list(row["embedding"]),
                     )
                 )
             return results

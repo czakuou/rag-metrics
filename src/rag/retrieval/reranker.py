@@ -1,10 +1,18 @@
-"""Reranks retrieved chunks by relevance to the query."""
+"""Reranks retrieved chunks by relevance to the query using a cross-encoder."""
 
-from rag.ingestion.types import Chunk
-from rag.retrieval.types import ScoredChunk
+from sentence_transformers import CrossEncoder
 
-# TODO: implement
+from rag.ingestion.types import EmbeddedChunk
+
+_CROSS_ENCODER = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
 
-def rerank(query: str, chunks: list[Chunk]) -> list[ScoredChunk]:
-    raise NotImplementedError
+def rerank(chunks: list[EmbeddedChunk], query: str) -> list[EmbeddedChunk]:
+    if not chunks:
+        return []
+    pairs = [(query, embedded.chunk.content) for embedded in chunks]
+    scores = _CROSS_ENCODER.predict(pairs)
+    return [
+        embedded
+        for embedded, _ in sorted(zip(chunks, scores, strict=True), key=lambda pair: -pair[1])
+    ]

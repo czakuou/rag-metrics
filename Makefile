@@ -14,7 +14,7 @@ ingest:
 	uv run python -m rag.ingestion.pipeline
 
 eval:
-	uv run python -m rag.evals.pipeline
+	uv run pytest -m integration tests/evals/test_golden_dataset.py -v
 
 agent:
 	uv run python -m rag.agent.pipeline

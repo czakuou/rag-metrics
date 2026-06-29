@@ -1,15 +1,29 @@
-"""Main entrypoint for the retrieval slice: query to rerank to grade."""
+"""Main entrypoint for the retrieval slice: query -> search -> rerank -> grade."""
 
-from rag.backends.embedding.protocol import EmbedFn
-from rag.backends.vectorstore.protocol import VectorStoreBackend
-from rag.retrieval.types import GradedChunk
+import asyncio
 
-# TODO: implement
+from rag.backends.embedding.factory import make_embedding_backend
+from rag.backends.vectorstore.factory import make_vectorstore_backend
+from rag.config import Settings, settings
+from rag.retrieval.grader import grade
+from rag.retrieval.reranker import rerank
+from rag.retrieval.searcher import search
+from rag.retrieval.types import RetrievalResult
 
 
-def run(query: str, backend: VectorStoreBackend, embed_fn: EmbedFn, k: int) -> list[GradedChunk]:
-    raise NotImplementedError
+async def run_retrieval(query: str, config: Settings) -> RetrievalResult:
+    backend = make_vectorstore_backend(config)
+    embed_fn = make_embedding_backend(config)
+    try:
+        retrieved = await search(query, backend, embed_fn, k=config.retrieval_k)
+        reranked = rerank(retrieved, query)
+        query_embedding = embed_fn([query])[0]
+        graded = grade(reranked, query_embedding, config.retrieval_relevance_threshold)
+        return RetrievalResult(query=query, chunks=graded)
+    finally:
+        await backend.dispose()
 
 
 if __name__ == "__main__":
-    pass
+    result = asyncio.run(run_retrieval("example query", settings))
+    print(result.model_dump_json(indent=2))

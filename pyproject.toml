@@ -14,6 +14,7 @@ dependencies = [
     "ragas>=0.2,<0.4",
     "structlog>=24.4",
     "typer>=0.13",
+    "sentence-transformers>=3.0",
 ]
 
 [dependency-groups]
@@ -60,9 +61,15 @@ warn_return_any = true
 warn_unused_ignores = true
 plugins = ["pydantic.mypy"]
 
+# tokenizers ships no py.typed marker / stubs upstream — nothing to fix on our side.
+[[tool.mypy.overrides]]
+module = "tokenizers"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-m 'not integration'"
 markers = [
     "integration: marks tests that call external APIs (deselect with -m 'not integration')",
 ]

@@ -29,7 +29,7 @@ jobs:
           EVAL_FAITHFULNESS_THRESHOLD: "0.70"
           EVAL_ANSWER_RELEVANCY_THRESHOLD: "0.65"
           EVAL_CONTEXT_PRECISION_THRESHOLD: "0.65"
-        run: uv run python -m rag.evals.pipeline
+        run: uv run pytest -m integration tests/evals/test_golden_dataset.py -v
 
       - name: Upload eval results
         if: always()
