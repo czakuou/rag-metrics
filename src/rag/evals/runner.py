@@ -4,7 +4,7 @@ from ragas import evaluate
 from ragas.dataset_schema import EvaluationResult
 
 from rag.evals.collector import PipelineFn, build_evaluation_dataset
-from rag.evals.metrics import RAGAS_METRICS, make_ragas_judge_llm
+from rag.evals.metrics import RAGAS_METRICS, make_ragas_judge_embeddings, make_ragas_judge_llm
 from rag.evals.scoring import score_report
 from rag.evals.types import EvalReport, EvalSample
 
@@ -16,7 +16,12 @@ def run_evals(
 ) -> EvalReport:
     dataset, row_samples, failed_samples = build_evaluation_dataset(samples, pipeline_fn)
 
-    result = evaluate(dataset, metrics=RAGAS_METRICS, llm=make_ragas_judge_llm())
+    result = evaluate(
+        dataset,
+        metrics=RAGAS_METRICS,
+        llm=make_ragas_judge_llm(),
+        embeddings=make_ragas_judge_embeddings(),
+    )
     assert isinstance(result, EvaluationResult)  # return_executor=False guarantees this
 
     return score_report(row_samples, result, thresholds, len(samples), failed_samples)
