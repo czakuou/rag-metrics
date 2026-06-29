@@ -33,5 +33,8 @@ class Settings(BaseSettings):
     eval_answer_relevancy_threshold: float = 0.65
     eval_context_precision_threshold: float = 0.65
 
+    # Agent — ReAct loop
+    agent_max_iterations: int = 5
+
 
 settings = Settings()

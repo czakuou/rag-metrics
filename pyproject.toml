@@ -15,6 +15,7 @@ dependencies = [
     "structlog>=24.4",
     "typer>=0.13",
     "sentence-transformers>=3.0",
+    "baml-py>=0.223",
 ]
 
 [dependency-groups]
@@ -44,6 +45,7 @@ packages = ["src/rag"]
 [tool.ruff]
 target-version = "py313"
 line-length = 100
+extend-exclude = ["src/rag/agent/baml_client"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "TCH"]
@@ -60,11 +62,18 @@ strict = true
 warn_return_any = true
 warn_unused_ignores = true
 plugins = ["pydantic.mypy"]
+exclude = ["src/rag/agent/baml_client/"]
 
 # tokenizers ships no py.typed marker / stubs upstream — nothing to fix on our side.
 [[tool.mypy.overrides]]
 module = "tokenizers"
 ignore_missing_imports = true
+
+# baml_client is generated code (excluded above), but other modules still import
+# it directly — its own type errors should not surface to those call sites.
+[[tool.mypy.overrides]]
+module = "rag.agent.baml_client.*"
+ignore_errors = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

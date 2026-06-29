@@ -2,21 +2,22 @@
 
 from pydantic import BaseModel
 
-from rag.retrieval.types import GradedChunk
 
-# TODO: implement
-
-
-class AgentStep(BaseModel):
-    """A single thought/action/observation step in the ReAct loop."""
-
-    thought: str
-    action: str
-    observation: str
+class ToolCall(BaseModel):
+    tool_name: str
+    tool_input: str
 
 
-class AgentAnswer(BaseModel):
-    """The final synthesized answer with supporting context."""
+class Observation(BaseModel):
+    tool_name: str
+    result: str
+    source_notes: list[str]
+
+
+class AgentResult(BaseModel):
+    """The final outcome of a ReAct loop run."""
 
     answer: str
-    sources: list[GradedChunk]
+    citations: list[str]
+    iterations: int
+    tool_calls: list[ToolCall]

@@ -1,8 +1,11 @@
-.PHONY: install ingest eval agent typecheck test lint format pre-commit up down
+.PHONY: install generate ingest eval agent typecheck test lint format pre-commit up down
 
 install:
 	uv sync
 	uv run pre-commit install
+
+generate:
+	uvx baml-cli generate --from src/rag/agent/baml_src/
 
 up:
 	docker compose up -d
@@ -19,7 +22,7 @@ eval:
 agent:
 	uv run python -m rag.agent.pipeline
 
-typecheck:
+typecheck: generate
 	uv run mypy src/
 
 lint:
@@ -28,7 +31,7 @@ lint:
 format:
 	uv run ruff format src/ tests/
 
-test:
+test: generate
 	uv run pytest tests/ -v
 
 pre-commit:
