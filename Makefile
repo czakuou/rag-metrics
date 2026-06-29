@@ -1,4 +1,4 @@
-.PHONY: install generate ingest eval agent typecheck test lint format pre-commit up down
+.PHONY: install generate ingest eval agent typecheck test lint format pre-commit up down logs-llm
 
 install:
 	uv sync
@@ -7,11 +7,15 @@ install:
 generate:
 	uvx baml-cli generate --from src/rag/agent/baml_src/
 
+# Brings up postgres, the LiteLLM proxy, and the app — all LLM calls route through litellm.
 up:
 	docker compose up -d
 
 down:
 	docker compose down
+
+logs-llm:
+	docker compose logs litellm -f
 
 ingest:
 	uv run python -m rag.ingestion.pipeline

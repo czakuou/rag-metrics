@@ -6,7 +6,7 @@ from pathlib import Path
 
 import structlog
 
-from rag.backends.embedding.factory import make_embedding_backend
+from rag.backends.embedding.litellm_backend import make_litellm_backend
 from rag.backends.embedding.protocol import EmbedFn
 from rag.backends.vectorstore.factory import make_vectorstore_backend
 from rag.backends.vectorstore.protocol import VectorStoreBackend
@@ -49,7 +49,11 @@ async def _ingest_document(
 
 async def _run_and_report() -> IngestionResult:
     backend = make_vectorstore_backend(settings)
-    embed_fn = make_embedding_backend(settings)
+    embed_fn = make_litellm_backend(
+        model=settings.llm_embed_model,
+        base_url=settings.litellm_base_url,
+        api_key=settings.litellm_master_key,
+    )
     chunking_strategy = ChunkStrategy(settings.chunking_strategy)
     try:
         return await run(backend, embed_fn, chunking_strategy)

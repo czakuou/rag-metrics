@@ -1,0 +1,33 @@
+model_list:
+  - model_name: default-chat
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: default-embedding
+    litellm_params:
+      model: openai/text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: eval-judge
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+router_settings:
+  num_retries: 3
+  retry_after: 1
+  allowed_fails: 2
+  fallbacks:
+    - default-chat:
+        - model: openai/gpt-4o
+          api_key: os.environ/OPENAI_API_KEY
+
+litellm_settings:
+  success_callback: []
+  failure_callback: []
+  request_timeout: 30
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

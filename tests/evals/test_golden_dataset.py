@@ -11,7 +11,6 @@ from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
 
-import litellm
 import pytest
 
 from rag.config import settings
@@ -19,6 +18,7 @@ from rag.evals.runner import run_evals
 from rag.evals.thresholds import THRESHOLDS
 from rag.evals.types import EvalReport
 from rag.retrieval.pipeline import run_retrieval
+from rag.shared.llm import complete
 
 pytestmark = pytest.mark.integration
 
@@ -28,16 +28,15 @@ BASELINE_SCORES_PATH = Path("data/baseline_scores.json")
 
 def _synthesize_answer(question: str, contexts: list[str]) -> str:
     context_block = "\n\n".join(contexts)
-    response = litellm.completion(
-        model=settings.llm_model,
+    return complete(
         messages=[
             {
                 "role": "user",
                 "content": f"Context:\n{context_block}\n\nQuestion: {question}\nAnswer:",
             }
         ],
+        model=settings.llm_chat_model,
     )
-    return str(response.choices[0].message.content)
 
 
 def _retrieval_pipeline(question: str) -> tuple[str, list[str]]:

@@ -26,6 +26,24 @@ services:
     ports:
       - "5432:5432" # local dev only — remove in production
 
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    volumes:
+      - ./docker/litellm/config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    ports:
+      - "4000:4000"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health/liveliness"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   app:
     build: .
     volumes:
@@ -36,6 +54,8 @@ services:
       - rag-network
     depends_on:
       postgres:
+        condition: service_healthy
+      litellm:
         condition: service_healthy
     env_file: .env
     command: ["python", "-m", "rag.agent.pipeline"]

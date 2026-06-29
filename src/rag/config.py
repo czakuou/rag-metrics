@@ -7,14 +7,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # LLM
+    # LLM — routed through the LiteLLM proxy, see shared/llm.py
     openai_api_key: str
-    llm_model: str = "gpt-4o-mini"
-
-    # Embedding backend — swap via .env. Supported values are the keys of
-    # backends.embedding.factory._REGISTRY.
-    embedding_backend: str = "openai"
-    embedding_model: str = "text-embedding-3-small"
+    litellm_base_url: str = "http://litellm:4000"
+    litellm_master_key: str = "sk-litellm-local-dev"
+    llm_chat_model: str = "default-chat"
+    llm_embed_model: str = "default-embedding"
+    llm_eval_model: str = "eval-judge"
 
     # Ingestion
     chunking_strategy: str = "fixed"
