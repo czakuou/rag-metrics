@@ -7,6 +7,25 @@ on:
 jobs:
   evals:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: rag
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: rag_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rag -d rag_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DATABASE_URL: "postgresql+asyncpg://rag:test@localhost:5432/rag_db"
+      LITELLM_BASE_URL: "http://localhost:4000"
+      LITELLM_MASTER_KEY: "sk-litellm-ci"
     steps:
       - uses: actions/checkout@v4
 
@@ -17,15 +36,30 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      - name: Apply database schema
+        env:
+          PGPASSWORD: test
+        run: psql -h localhost -U rag -d rag_db -f docker/postgres/init.sql
+
+      # services: cannot mount config files, so the LiteLLM proxy (which needs
+      # docker/litellm/config.yaml for its model_list/aliases) is started as a
+      # plain docker run with the repo checkout bind-mounted, instead.
+      - name: Start LiteLLM proxy
+        run: |
+          docker run -d --name litellm \
+            --network host \
+            -v "${{ github.workspace }}/docker/litellm/config.yaml:/app/config.yaml" \
+            -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            -e LITELLM_MASTER_KEY="sk-litellm-ci" \
+            ghcr.io/berriai/litellm:main-latest \
+            --config /app/config.yaml --port 4000
+          timeout 60 bash -c 'until curl -sf http://localhost:4000/health/liveliness; do sleep 2; done'
+
+      - name: Run ingestion
+        run: uv run python -m rag.ingestion.pipeline
+
       - name: Run RAGAS eval suite
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # TODO: the dummy pipeline never queries the database — once the real
-          # RAG pipeline is wired in here, add a postgres service container.
-          DATABASE_URL: "postgresql+asyncpg://rag:test@localhost:5432/rag_db"
-          EMBEDDING_BACKEND: "openai"
-          EMBEDDING_MODEL: "text-embedding-3-small"
-          LLM_MODEL: "gpt-4o-mini"
           EVAL_FAITHFULNESS_THRESHOLD: "0.70"
           EVAL_ANSWER_RELEVANCY_THRESHOLD: "0.65"
           EVAL_CONTEXT_PRECISION_THRESHOLD: "0.65"

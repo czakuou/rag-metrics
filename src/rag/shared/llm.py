@@ -20,13 +20,21 @@ def complete(messages: list[dict[str, str]], model: str, **kwargs: Any) -> str:
             messages=messages,
             api_base=settings.litellm_base_url,
             api_key=settings.litellm_master_key,
+            custom_llm_provider="openai",
             **kwargs,
         )
     except Exception:
         logger.error("llm_completion_failed", model=model)
         raise
 
-    cost = litellm.completion_cost(completion_response=response)
+    # The proxy fronts arbitrary providers under model aliases (e.g. "gemini-flash") that
+    # litellm's built-in cost map doesn't recognize, so cost lookup can fail independently
+    # of the call itself succeeding.
+    try:
+        cost = litellm.completion_cost(completion_response=response)
+    except Exception:
+        cost = None
+
     logger.info(
         "llm_completion",
         model=model,
@@ -44,13 +52,18 @@ def embed(texts: list[str], model: str, **kwargs: Any) -> list[list[float]]:
             input=texts,
             api_base=settings.litellm_base_url,
             api_key=settings.litellm_master_key,
+            custom_llm_provider="openai",
             **kwargs,
         )
     except Exception:
         logger.error("llm_embedding_failed", model=model)
         raise
 
-    cost = litellm.completion_cost(completion_response=response)
+    try:
+        cost = litellm.completion_cost(completion_response=response)
+    except Exception:
+        cost = None
+
     logger.info(
         "llm_embedding",
         model=model,

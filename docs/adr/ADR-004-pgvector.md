@@ -1,4 +1,4 @@
-# ADR-002: pgvector as the vector store
+# ADR-004: pgvector as the vector store
 
 ## Status
 
@@ -28,7 +28,7 @@ and here is the HNSW index configuration and its trade-offs" is.
 ### Option A — pgvector (PostgreSQL extension)
 
 Adds vector column type and ANN search operators to PostgreSQL.
-Supports two index types: IVFFlat and HNSW (see ADR-003 for chunking; index choice
+Supports two index types: IVFFlat and HNSW (see ADR-002 for chunking; index choice
 is addressed here).
 
 **HNSW index** (Hierarchical Navigable Small World):
@@ -176,7 +176,7 @@ per request).
   here purely as a connection-pool manager with a thin execution API, not as an
   object-relational mapper.
 - **Option C — SQLAlchemy ORM (declarative models, async sessions).** Rejected for
-  the same reason LangChain/LlamaIndex are rejected in ADR-005: it would map
+  the same reason LangChain/LlamaIndex are rejected in ADR-003: it would map
   `Chunk`/`Document` onto ORM model classes with `Mapped[...]` fields and
   `relationship()` for `parent_id`, duplicating the Pydantic domain types in this
   codebase's `ingestion/types.py` and adding session-management concepts (identity

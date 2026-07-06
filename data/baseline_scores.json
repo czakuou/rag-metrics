@@ -1,5 +1,8 @@
 {
-  "faithfulness": 0.0,
-  "answer_relevancy": 0.0,
-  "context_precision": 0.0
+  "faithfulness": 0.9146216852239699,
+  "answer_relevancy": 0.9175940777371028,
+  "context_precision": 0.9372698412010411,
+  "passed": true,
+  "total_samples": 25,
+  "timestamp": "2026-06-30T06:33:04.611577+00:00"
 }

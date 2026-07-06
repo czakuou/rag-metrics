@@ -118,7 +118,9 @@ class PgVectorBackend:
                             ),
                             parent_id=row["parent_id"],
                         ),
-                        embedding=list(row["embedding"]),
+                        embedding=[
+                            float(value) for value in row["embedding"].strip("[]").split(",")
+                        ],
                     )
                 )
             return results

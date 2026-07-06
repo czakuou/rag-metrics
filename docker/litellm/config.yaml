@@ -6,13 +6,19 @@ model_list:
 
   - model_name: default-embedding
     litellm_params:
-      model: openai/text-embedding-3-small
-      api_key: os.environ/OPENAI_API_KEY
+      model: gemini/gemini-embedding-001
+      api_key: os.environ/GEMINI_API_KEY
+      dimensions: 1536 # match the pgvector column width (vector(1536), see docker/postgres/init.sql)
 
   - model_name: eval-judge
     litellm_params:
       model: openai/gpt-4o-mini
       api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
 
 router_settings:
   num_retries: 3
@@ -22,11 +28,14 @@ router_settings:
     - default-chat:
         - model: openai/gpt-4o
           api_key: os.environ/OPENAI_API_KEY
+    - gemini-flash:
+        - model: openai/gpt-4o-mini
+          api_key: os.environ/OPENAI_API_KEY
 
 litellm_settings:
   success_callback: []
   failure_callback: []
-  request_timeout: 30
+  request_timeout: 90
   drop_params: true
 
 general_settings:

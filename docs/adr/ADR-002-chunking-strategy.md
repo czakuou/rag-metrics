@@ -1,4 +1,4 @@
-# ADR-003: Chunking strategy
+# ADR-002: Chunking strategy
 
 ## Status
 

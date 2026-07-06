@@ -1,7 +1,7 @@
 """RAGAS metric definitions and judge LLM — routed through the LiteLLM proxy."""
 
-from langchain_openai import ChatOpenAI
-from ragas.embeddings import BaseRagasEmbedding, LiteLLMEmbeddings
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from ragas.embeddings import BaseRagasEmbeddings, LangchainEmbeddingsWrapper
 from ragas.llms import BaseRagasLLM, LangchainLLMWrapper
 from ragas.metrics import Metric, answer_relevancy, context_precision, faithfulness
 
@@ -23,9 +23,13 @@ def make_ragas_judge_llm() -> BaseRagasLLM:
     return LangchainLLMWrapper(chat)  # type: ignore[no-any-return]  # ragas stub returns Any
 
 
-def make_ragas_judge_embeddings() -> BaseRagasEmbedding:
-    return LiteLLMEmbeddings(
+def make_ragas_judge_embeddings() -> BaseRagasEmbeddings:
+    # answer_relevancy/context_precision use the legacy MetricWithEmbeddings interface
+    # (embed_query/embed_documents), so embeddings must go through LangchainEmbeddingsWrapper
+    # rather than the modern BaseRagasEmbedding providers like LiteLLMEmbeddings.
+    embeddings = OpenAIEmbeddings(
         model=settings.llm_embed_model,
-        api_key=settings.litellm_master_key,
-        api_base=settings.litellm_base_url,
+        openai_api_key=settings.litellm_master_key,
+        openai_api_base=settings.litellm_base_url,
     )
+    return LangchainEmbeddingsWrapper(embeddings)  # type: ignore[no-any-return]  # ragas stub returns Any

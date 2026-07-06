@@ -59,9 +59,9 @@ scores — it must be updated in the same commit as any pipeline change, per the
 ## ADRs
 
 - [ADR-001: Eval framework](docs/adr/ADR-001-eval-framework.md)
-- [ADR-002: Evals-first development](docs/adr/ADR-002-evals-first.md)
-- [ADR-003: Chunking strategy](docs/adr/ADR-003-chunking-strategy.md)
-- [ADR-004: Swappable backends](docs/adr/ADR-004-swappable-backends.md)
+- [ADR-002: Chunking strategy](docs/adr/ADR-002-chunking-strategy.md)
+- [ADR-003: BAML as the LLM contract layer — no agent framework](docs/adr/ADR-003-baml-no-framework.md)
+- [ADR-004: pgvector as the vector store](docs/adr/ADR-004-pgvector.md)
 
 ## Development
 

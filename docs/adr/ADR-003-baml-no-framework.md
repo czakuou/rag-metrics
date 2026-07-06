@@ -1,4 +1,4 @@
-# ADR-005: BAML as the LLM contract layer — no agent framework
+# ADR-003: BAML as the LLM contract layer — no agent framework
 
 ## Status
 

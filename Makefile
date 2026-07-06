@@ -17,11 +17,16 @@ down:
 logs-llm:
 	docker compose logs litellm -f
 
+# Local (non-containerized) runs talk to postgres/litellm via the docker port mappings on
+# localhost, since the host can't resolve the "postgres"/"litellm" service names from .env.
+LOCAL_ENV := DATABASE_URL=postgresql+asyncpg://rag:changeme@localhost:5432/rag_db \
+	LITELLM_BASE_URL=http://localhost:4000
+
 ingest:
-	uv run python -m rag.ingestion.pipeline
+	$(LOCAL_ENV) uv run python -m rag.ingestion.pipeline
 
 eval:
-	uv run pytest -m integration tests/evals/test_golden_dataset.py -v
+	$(LOCAL_ENV) uv run pytest -m integration tests/evals/test_golden_dataset.py -v
 
 agent:
 	uv run python -m rag.agent.pipeline
