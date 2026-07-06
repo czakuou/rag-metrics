@@ -18,11 +18,13 @@ src/rag/
 ├── agent/              # slice: ReAct loop → answer
 ├── evals/              # slice: golden dataset → RAGAS → CI gate
 ├── backends/           # swappable: embedding/, vectorstore/
-└── shared/             # only: logging.py, tracing.py
+└── shared/             # logging.py, tracing.py, llm.py, cli.py, types.py
 ```
 
-Each slice is self-contained — read one folder, understand the entire domain. Slices never import
-from each other directly; only `backends/` and `shared/` are shared dependencies.
+Each slice is self-contained — read one folder, understand the entire domain. Cross-slice imports
+are restricted: a downstream slice may call an upstream slice's pipeline function (e.g. `agent`
+imports `retrieval.pipeline`), but types shared between slices live in `shared/types.py` rather
+than in either slice. See [ADR-005](docs/adr/ADR-005-shared-types.md) for the rule and rationale.
 
 ## Backends
 
@@ -159,6 +161,7 @@ and debug when a judge call fails.
 - [ADR-003: BAML as the LLM contract layer — no agent framework](docs/adr/ADR-003-baml-no-framework.md)
 - [ADR-004: pgvector as the vector store](docs/adr/ADR-004-pgvector.md)
 - [ADR-005: shared types instead of cross-slice imports](docs/adr/ADR-005-shared-types.md)
+- [ADR-006: Eval metric selection and CI gate design](docs/adr/ADR-006-eval-metric-selection.md)
 
 ## Development
 

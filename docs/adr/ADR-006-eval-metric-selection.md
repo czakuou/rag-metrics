@@ -34,6 +34,33 @@ All three are LLM-as-judge metrics (RAGAS calls the eval LLM internally). None r
 a labeled "correct/incorrect" annotation — only a `reference` (ground truth answer),
 which is already present in every `EvalSample`.
 
+### Known limitation of `answer_relevancy`
+
+`answer_relevancy` uses a reverse-question mechanism: the eval LLM generates N questions
+from the answer, embeds them, and measures cosine similarity to the original question.
+This reliably catches off-topic answers — but it has a blind spot: a **verbose,
+evasive answer that circles the topic without actually answering** can score high,
+because its reverse-generated questions still align with the original question's domain.
+
+Concretely: "The CAP theorem involves a famous trade-off often discussed in distributed
+systems contexts, which engineers frequently debate, and there are nuanced perspectives on
+how to think about it..." scores well on `answer_relevancy` because its reverse question
+is "What is the CAP theorem?" — despite the answer containing no information.
+
+This means `answer_relevancy` is a necessary but insufficient gate for answer quality.
+It is kept in the CI gate because it *does* catch the most common alignment failure
+(clearly off-topic answers), and because the alternative — `answer_correctness`, which
+compares the answer against `reference` using NLI — scores poorly on this corpus for the
+same reason `context_recall` was rejected: vault phrasing rarely matches ground truth
+phrasing closely enough for the NLI judge to confirm correctness on a correct answer.
+
+The evasive-but-topical failure mode is partially mitigated by `faithfulness`: an evasive
+answer that adds no claims still scores low on faithfulness if it ventures into territory
+unsupported by context. But the gap is real: an evasive answer that quotes context
+verbatim without synthesising it would pass all three gates. Covering this gap would
+require either a human eval sample (non-reproducible in CI) or a larger, better-labelled
+dataset that makes `answer_correctness` reliable enough to gate on.
+
 ### Rejected metric: `context_recall`
 
 `context_recall` measures what fraction of the ground truth answer is covered by the
