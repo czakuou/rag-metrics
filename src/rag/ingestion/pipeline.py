@@ -54,9 +54,8 @@ async def _run_and_report() -> IngestionResult:
         base_url=settings.litellm_base_url,
         api_key=settings.litellm_master_key,
     )
-    chunking_strategy = ChunkStrategy(settings.chunking_strategy)
     try:
-        return await run(backend, embed_fn, chunking_strategy)
+        return await run(backend, embed_fn, settings.chunking_strategy)
     finally:
         await backend.dispose()
 

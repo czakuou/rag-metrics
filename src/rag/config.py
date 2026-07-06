@@ -3,6 +3,8 @@
 from pydantic import PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from rag.ingestion.types import ChunkStrategy
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -16,7 +18,7 @@ class Settings(BaseSettings):
     llm_eval_model: str = "eval-judge"
 
     # Ingestion
-    chunking_strategy: str = "fixed"
+    chunking_strategy: ChunkStrategy = ChunkStrategy.PARENT_CHILD
 
     # Vector store backend — swap via .env. Supported values are the keys of
     # backends.vectorstore.factory._REGISTRY.
