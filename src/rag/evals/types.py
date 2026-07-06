@@ -13,15 +13,29 @@ class EvalSample(BaseModel):
 
 
 class MetricScore(BaseModel):
-    """A single RAGAS metric's mean score, gated against its threshold."""
+    """A single RAGAS metric's mean score, gated against its threshold and its baseline.
+
+    `baseline` is the last known-good score for this metric from
+    `data/baseline_scores.json`. Gating on the absolute `threshold` alone lets a metric
+    regress from e.g. 0.92 to 0.86 without failing CI, even though that drop is a real
+    regression — `regressed` catches that case independently of where `threshold` is set.
+    """
 
     name: str
     score: float
     threshold: float
+    baseline: float | None = None
+    regression_tolerance: float = 0.0
+
+    @property
+    def regressed(self) -> bool:
+        if self.baseline is None:
+            return False
+        return self.score < self.baseline - self.regression_tolerance
 
     @property
     def passed(self) -> bool:
-        return self.score >= self.threshold
+        return self.score >= self.threshold and not self.regressed
 
     def failing_questions(
         self, samples: list[EvalSample], per_sample_scores: list[float]
@@ -43,12 +57,17 @@ class MetricScores(BaseModel):
         cls,
         per_metric_scores: dict[str, list[float]],
         thresholds: dict[str, float],
+        baselines: dict[str, float] | None = None,
+        regression_tolerance: float = 0.0,
     ) -> "MetricScores":
+        baselines = baselines or {}
         scores = [
             MetricScore(
                 name=metric.name,
                 score=sum(per_sample_scores) / len(per_sample_scores),
                 threshold=thresholds[metric.name],
+                baseline=baselines.get(metric.name),
+                regression_tolerance=regression_tolerance,
             )
             for metric in RAGAS_METRICS
             for per_sample_scores in [per_metric_scores[metric.name]]

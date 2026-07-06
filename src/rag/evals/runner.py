@@ -13,6 +13,8 @@ def run_evals(
     samples: list[EvalSample],
     pipeline_fn: PipelineFn,
     thresholds: dict[str, float],
+    baselines: dict[str, float] | None = None,
+    regression_tolerance: float = 0.0,
 ) -> EvalReport:
     dataset, row_samples, failed_samples = build_evaluation_dataset(samples, pipeline_fn)
 
@@ -24,4 +26,12 @@ def run_evals(
     )
     assert isinstance(result, EvaluationResult)  # return_executor=False guarantees this
 
-    return score_report(row_samples, result, thresholds, len(samples), failed_samples)
+    return score_report(
+        row_samples,
+        result,
+        thresholds,
+        len(samples),
+        failed_samples,
+        baselines,
+        regression_tolerance,
+    )

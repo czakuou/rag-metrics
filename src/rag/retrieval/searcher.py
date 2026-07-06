@@ -2,11 +2,11 @@
 
 from rag.backends.embedding.protocol import EmbedFn
 from rag.backends.vectorstore.protocol import VectorStoreBackend
-from rag.ingestion.types import EmbeddedChunk
+from rag.shared.types import ScoredChunk
 
 
 async def search(
     query: str, backend: VectorStoreBackend, embed_fn: EmbedFn, k: int = 10
-) -> list[EmbeddedChunk]:
+) -> list[ScoredChunk]:
     vector = embed_fn([query])[0]
     return await backend.search(vector, k)

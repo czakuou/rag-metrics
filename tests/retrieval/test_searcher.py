@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from rag.ingestion.types import Chunk, ChunkMetadata, ChunkStrategy, EmbeddedChunk
 from rag.retrieval.searcher import search
+from rag.shared.types import Chunk, ChunkMetadata, ChunkStrategy, ScoredChunk
 
 
-def _make_embedded_chunk(content: str) -> EmbeddedChunk:
-    return EmbeddedChunk(
+def _make_scored_chunk(content: str) -> ScoredChunk:
+    return ScoredChunk(
         chunk=Chunk(
             id=content,
             content=content,
@@ -16,17 +16,17 @@ def _make_embedded_chunk(content: str) -> EmbeddedChunk:
                 strategy=ChunkStrategy.FIXED,
             ),
         ),
-        embedding=[1.0, 0.0],
+        relevance_score=0.9,
     )
 
 
 class _FakeBackend:
-    def __init__(self, results: list[EmbeddedChunk]) -> None:
+    def __init__(self, results: list[ScoredChunk]) -> None:
         self._results = results
         self.last_vector: list[float] | None = None
         self.last_k: int | None = None
 
-    async def search(self, vector: list[float], k: int) -> list[EmbeddedChunk]:
+    async def search(self, vector: list[float], k: int) -> list[ScoredChunk]:
         self.last_vector = vector
         self.last_k = k
         return self._results
@@ -34,7 +34,7 @@ class _FakeBackend:
 
 async def test_search_embeds_query_and_delegates_to_backend() -> None:
     # Given
-    known_chunks = [_make_embedded_chunk("about RAG"), _make_embedded_chunk("about pgvector")]
+    known_chunks = [_make_scored_chunk("about RAG"), _make_scored_chunk("about pgvector")]
     backend = _FakeBackend(known_chunks)
 
     def embed_fn(texts: list[str]) -> list[list[float]]:

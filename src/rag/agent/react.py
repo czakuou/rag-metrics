@@ -1,15 +1,15 @@
 """ReAct reasoning loop: think, act, observe until an answer is reached."""
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
-from rag.agent.baml_client import b
+from rag.agent.baml_client.async_client import b
 from rag.agent.baml_client.types import Action, FinalAnswer, Thought
 from rag.agent.tools import RetrievalFn, dispatch_tool
 from rag.agent.types import AgentResult, Observation, ToolCall
 from rag.config import Settings
 from rag.retrieval.pipeline import run_retrieval
 
-type ReActStepFn = Callable[[str, str, str], Thought | Action | FinalAnswer]
+type ReActStepFn = Callable[[str, str, str], Awaitable[Thought | Action | FinalAnswer]]
 type ObservationCallback = Callable[[Observation], None]
 
 
@@ -26,7 +26,7 @@ async def run_react_loop(
     iterations = 0
 
     while iterations < config.agent_max_iterations:
-        step = react_step_fn(query, context, "\n".join(history))
+        step = await react_step_fn(query, context, "\n".join(history))
 
         match step:
             case FinalAnswer():

@@ -14,8 +14,9 @@ from rag.config import settings
 from rag.ingestion.chunker import chunk
 from rag.ingestion.embedder import embed
 from rag.ingestion.loader import load_vault
-from rag.ingestion.types import ChunkStrategy, Document, DocumentOutcome, IngestionResult
+from rag.ingestion.types import Document, DocumentOutcome, IngestionResult
 from rag.shared.logging import configure_logging
+from rag.shared.types import ChunkStrategy
 
 logger = structlog.get_logger()
 
@@ -49,11 +50,7 @@ async def _ingest_document(
 
 async def _run_and_report() -> IngestionResult:
     backend = make_vectorstore_backend(settings)
-    embed_fn = make_litellm_backend(
-        model=settings.llm_embed_model,
-        base_url=settings.litellm_base_url,
-        api_key=settings.litellm_master_key,
-    )
+    embed_fn = make_litellm_backend(model=settings.llm_embed_model)
     try:
         return await run(backend, embed_fn, settings.chunking_strategy)
     finally:

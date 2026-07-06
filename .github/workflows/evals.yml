@@ -4,6 +4,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   evals:
     runs-on: ubuntu-latest
@@ -28,6 +31,8 @@ jobs:
       LITELLM_MASTER_KEY: "sk-litellm-ci"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - uses: astral-sh/setup-uv@v4
         with:
@@ -60,9 +65,10 @@ jobs:
 
       - name: Run RAGAS eval suite
         env:
-          EVAL_FAITHFULNESS_THRESHOLD: "0.70"
-          EVAL_ANSWER_RELEVANCY_THRESHOLD: "0.65"
-          EVAL_CONTEXT_PRECISION_THRESHOLD: "0.65"
+          EVAL_FAITHFULNESS_THRESHOLD: "0.85"
+          EVAL_ANSWER_RELEVANCY_THRESHOLD: "0.85"
+          EVAL_CONTEXT_PRECISION_THRESHOLD: "0.85"
+          EVAL_REGRESSION_TOLERANCE: "0.02"
         run: uv run pytest -m integration tests/evals/test_golden_dataset.py -v
 
       - name: Upload eval results
@@ -71,3 +77,23 @@ jobs:
         with:
           name: eval-results
           path: data/baseline_scores.json
+
+      # _write_baseline_scores() (tests/evals/test_golden_dataset.py) only rewrites this
+      # file locally in the runner's checkout, and only when every metric passed — see
+      # ADR-001 addendum. Without this step that updated file never leaves the runner, so
+      # `data/baseline_scores.json` on `main` would never actually advance after a passing
+      # PR despite the ADR's "baseline only advances when a run passes" claim. Committing
+      # back to the PR branch (not `main` directly) keeps the update visible in the PR diff
+      # for review instead of silently mutating `main` out-of-band.
+      - name: Commit updated baseline if it advanced
+        if: always()
+        run: |
+          if ! git diff --quiet -- data/baseline_scores.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/baseline_scores.json
+            git commit -m "chore: update eval baseline scores [skip ci]"
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          else
+            echo "No baseline change to commit."
+          fi

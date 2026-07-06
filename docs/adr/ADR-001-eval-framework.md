@@ -6,9 +6,10 @@ Accepted
 
 ## Context
 
-The core weakness identified in the InPost technical interview was the absence of
-a principled approach to measuring RAG quality. The interviewer's feedback pointed
-to gaps in: eval design, LLM measurement, and CI/CD integration for AI systems.
+RAG systems fail silently: a pipeline change can degrade answer quality without
+throwing an exception anywhere. Without a principled way to measure retrieval and
+generation quality, regressions are only caught by manually reading outputs — which
+does not scale and is not reproducible across pipeline versions.
 
 The project needs an eval framework that can:
 - Measure retrieval and generation quality independently
@@ -49,8 +50,9 @@ The extra breadth (toxicity, bias, summarisation metrics) is not needed here.
 Full control; no dependency on a third-party framework.
 Requires implementing metric logic from scratch (NLI for faithfulness, cosine similarity
 for relevancy, etc.).
-High implementation cost for a portfolio project where speed matters.
-Harder to justify in an interview — no established metric definition to point to.
+High implementation cost relative to adopting an existing, validated framework.
+No established, citable metric definition — harder to reason about whether a given
+score is "good" without a reference implementation to compare against.
 
 ### Option D — Human evaluation only
 
@@ -63,9 +65,9 @@ Ruled out immediately — CI integration is a hard requirement.
 
 Chose **Option A — RAGAS**.
 
-The RAG Triad maps directly to the three failure modes the InPost interviewer was
-probing for. RAGAS is the reference implementation of those metrics; citing it in
-an interview carries more weight than citing a custom script that does "something similar."
+The RAG Triad maps directly to the three failure modes this project needs to guard
+against. RAGAS is the reference implementation of those metrics, with a stable
+definition that a custom script doing "something similar" would not have.
 
 The LiteLLM integration means the eval LLM can be swapped via `.env` without
 touching eval code — the same swappability principle used in the rest of the project.
@@ -78,7 +80,7 @@ RAGAS supports this natively.
 
 **Gain:**
 - CI gate is a one-liner: `assert score >= THRESHOLDS["faithfulness"]`
-- Metric definitions are citable in interviews and ADRs
+- Metric definitions are standard and well-documented, not ad hoc
 - Eval cost is predictable and low (~$0.02 per full suite run on gpt-4o-mini)
 - Scores in `data/baseline_scores.json` give a permanent record of pipeline evolution
 
@@ -92,3 +94,25 @@ RAGAS supports this natively.
 **Technical debt:**
 - `data/baseline_scores.json` must be updated manually after every intentional
   threshold change. If it drifts from reality, CI becomes meaningless.
+
+## Addendum: CI gate now checks regression, not just absolute threshold (2026-06-30)
+
+The original CI gate only asserted `score >= threshold`, with thresholds (0.65–0.70)
+set well below real scores (~0.90+). This meant the gate caught catastrophic failures
+but not regressions — a change that dropped `context_precision` from 0.94 to 0.72
+would still pass. This gap was not theoretical: it is exactly what happened when
+`ChunkStrategy.PARENT_CHILD` was briefly made the default (see ADR-002 addendum) and
+merged despite regressing two of three metrics, because nothing compared the new run
+against `data/baseline_scores.json`.
+
+**Fix:** `MetricScore.regressed` (in `evals/types.py`) now fails a metric if its score
+drops more than `eval_regression_tolerance` (default 0.02) below the corresponding
+value in `data/baseline_scores.json`, independently of the absolute threshold. The
+threshold was also raised to 0.85 across all three metrics — close enough to observed
+scores (~0.90+) that it acts as a real floor, not just a catastrophe check. The
+regression check and the absolute threshold are deliberately both kept: the threshold
+catches a bad first run (no baseline yet), the regression check catches a slow decline
+across many merged PRs where each individual drop stays above 0.85.
+
+`data/baseline_scores.json` is only overwritten when the run passes — a regressed run
+must not become the new reference for the next PR's comparison.

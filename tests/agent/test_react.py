@@ -16,7 +16,7 @@ def _settings(max_iterations: int = 5) -> Settings:
 
 async def test_react_loop_returns_agent_result_when_final_answer_on_first_iteration() -> None:
     # Given
-    def fake_react_step(query: str, context: str, history: str) -> FinalAnswer:
+    async def fake_react_step(query: str, context: str, history: str) -> FinalAnswer:
         return FinalAnswer(answer="Paris is the capital of France.", citations=["france.md"])
 
     # When
@@ -37,7 +37,9 @@ async def test_react_loop_dispatches_tool_when_action_returned_then_continues(
     # Given
     calls = {"count": 0}
 
-    def fake_react_step(query: str, context: str, history: str) -> Thought | Action | FinalAnswer:
+    async def fake_react_step(
+        query: str, context: str, history: str
+    ) -> Thought | Action | FinalAnswer:
         calls["count"] += 1
         if calls["count"] == 1:
             return Action(tool_name="vector_search", tool_input="capital of France")
@@ -66,7 +68,7 @@ async def test_react_loop_dispatches_tool_when_action_returned_then_continues(
 
 async def test_react_loop_returns_graceful_result_when_max_iterations_reached() -> None:
     # Given
-    def fake_react_step(query: str, context: str, history: str) -> Thought:
+    async def fake_react_step(query: str, context: str, history: str) -> Thought:
         return Thought(reasoning="still thinking", action_needed=False)
 
     # When
@@ -84,7 +86,7 @@ async def test_react_loop_iterations_count_matches_actual_loop_count() -> None:
     # Given
     calls = {"count": 0}
 
-    def fake_react_step(query: str, context: str, history: str) -> Thought | FinalAnswer:
+    async def fake_react_step(query: str, context: str, history: str) -> Thought | FinalAnswer:
         calls["count"] += 1
         if calls["count"] < 3:
             return Thought(reasoning="thinking more", action_needed=False)

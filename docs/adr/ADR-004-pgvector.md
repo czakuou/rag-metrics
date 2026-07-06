@@ -18,10 +18,10 @@ Constraints specific to this project:
 - Swappability is required: the `VectorStoreBackend` Protocol must allow replacing
   pgvector without touching retrieval logic
 
-Secondary constraint: the vector store choice must be defensible in a senior
-engineering interview. "We used Pinecone because it was easy to set up" is not
-a defensible answer. "We used pgvector because it eliminated a service boundary,
-and here is the HNSW index configuration and its trade-offs" is.
+Secondary constraint: the choice must be defensible on engineering merits, not
+convenience. "It was easy to set up" is not a justification on its own — the
+decision needs to be traceable to a concrete trade-off, e.g. service boundaries
+eliminated, and a specific index configuration with understood trade-offs.
 
 ## Options considered
 
@@ -68,7 +68,7 @@ Excellent developer experience for getting started quickly.
 - Cost: free tier limited to 1 index, 100K vectors — acceptable for a portfolio
   project but not production-representative
 - Data leaves the local environment — complicates local development and testing
-- Does not demonstrate infrastructure knowledge in an interview
+- Outsources the operational decisions (indexing, scaling) this project wants to own
 
 ### Option D — ChromaDB
 
@@ -107,8 +107,8 @@ The swap is one line in `.env`.
 - Metadata and vectors in the same transaction boundary — no split-brain on updates
 - HNSW index gives <5ms p99 query latency for the expected dataset size
   (<100K vectors for an Obsidian vault)
-- Defensible in an interview: can explain HNSW graph structure, `ef_search` tuning,
-  and the IVFFlat trade-off
+- The HNSW graph structure, `ef_search` tuning, and the IVFFlat trade-off are all
+  understood and documented, not just inherited from a managed service's defaults
 
 **Lose:**
 - pgvector does not support sparse vectors (BM25 hybrid search) natively —
@@ -122,13 +122,16 @@ The swap is one line in `.env`.
 ```sql
 CREATE INDEX ON chunks
 USING hnsw (embedding vector_cosine_ops)
-WITH (m = 16, ef_construction = 64);
+WITH (m = 16, ef_construction = 64)
+WHERE embedding IS NOT NULL;
 ```
 
 `m = 16`: max connections per layer. Higher = better recall, more memory.
 `ef_construction = 64`: size of the candidate list during index build.
 Higher = better recall, slower build. 64 is the pgvector default and appropriate
 for this dataset size.
+The partial `WHERE embedding IS NOT NULL` keeps rows that failed embedding (or are
+mid-ingestion) out of the index, so it never has to scan or rank vector(1536) NULLs.
 
 `ef_search` (set at query time, not index time):
 ```sql

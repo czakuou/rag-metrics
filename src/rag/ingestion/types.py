@@ -1,16 +1,14 @@
-"""Domain types for the ingestion slice."""
+"""Domain types for the ingestion slice.
 
-from enum import StrEnum
+`Chunk`, `ChunkMetadata`, `ChunkStrategy`, `EmbeddedChunk`, and `EmbeddingVector` live in
+`rag.shared.types` instead of here — they are produced by this slice but consumed by
+`retrieval` and `backends/vectorstore` too, so they are a cross-slice contract, not an
+ingestion-only concept. Import them from `rag.shared.types` directly.
+"""
+
 from pathlib import Path
 
 from pydantic import BaseModel
-
-
-class ChunkStrategy(StrEnum):
-    """Supported document chunking strategies."""
-
-    FIXED = "fixed"
-    PARENT_CHILD = "parent_child"
 
 
 class DocumentMetadata(BaseModel):
@@ -27,45 +25,6 @@ class Document(BaseModel):
 
     content: str
     metadata: DocumentMetadata
-
-
-class ChunkMetadata(BaseModel):
-    """Metadata describing the origin of a chunk."""
-
-    source: Path
-    title: str
-    chunk_index: int
-    strategy: ChunkStrategy
-
-
-class Chunk(BaseModel):
-    """A chunk of a document, ready for embedding."""
-
-    id: str
-    content: str
-    metadata: ChunkMetadata
-    parent_id: str | None = None
-
-    @property
-    def is_parent(self) -> bool:
-        return self.parent_id is None
-
-    @property
-    def is_embeddable(self) -> bool:
-        """Parent chunks in parent-child strategy provide context only — never embedded."""
-        if self.metadata.strategy == ChunkStrategy.PARENT_CHILD:
-            return not self.is_parent
-        return True
-
-
-type EmbeddingVector = list[float]
-
-
-class EmbeddedChunk(BaseModel):
-    """A chunk with its embedding vector attached."""
-
-    chunk: Chunk
-    embedding: EmbeddingVector
 
 
 class DocumentOutcome(BaseModel):

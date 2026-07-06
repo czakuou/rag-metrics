@@ -31,15 +31,39 @@ src/rag/
 ├── agent/              # slice: ReAct loop → answer
 ├── evals/              # slice: golden dataset → RAGAS → CI gate
 ├── backends/           # swappable: embedding/, vectorstore/
-└── shared/             # only: logging.py, tracing.py
+└── shared/             # logging.py, tracing.py, cli.py, types.py
 ```
 
 **Rule:** each slice is self-contained. Read one folder — understand the entire domain.
 
 Every slice contains:
-- `types.py` — domain types for this slice
+- `types.py` — domain types owned by this slice
 - `pipeline.py` — main function invoked by CLI (`python -m rag.<slice>.pipeline`)
 - domain function files (`loader.py`, `chunker.py`, etc.)
+
+### Cross-slice imports — what's allowed and why
+
+Two kinds of cross-slice dependency are legal; both are imports, but they mean
+different things, and confusing them is how this rule gets violated by accident:
+
+1. **A slice imports another slice's domain function/pipeline to orchestrate it.**
+   Example: `agent/react.py` imports `retrieval.pipeline.run_retrieval`. The agent
+   *calls* retrieval as a step in the ReAct loop — that's a real functional
+   dependency, not a layering violation. This is allowed for slices that are
+   explicitly downstream of another in the data flow (`agent` depends on
+   `retrieval`, never the reverse).
+2. **Two slices need the same domain type because one produces it and another
+   consumes it as data**, not by calling into the producing slice's functions.
+   Example: `ingestion` produces `Chunk`/`EmbeddedChunk`, `retrieval` and
+   `backends/vectorstore` consume them as data. Importing `Chunk` from
+   `rag.ingestion.types` here would be wrong — it isn't really an "ingestion
+   type" once two other slices depend on it, and it tempts `ingestion/types.py`
+   to grow business logic that `retrieval` then has no business reading. The
+   type belongs in `rag.shared.types` instead — see [ADR-005](docs/adr/ADR-005-shared-types.md).
+
+If you find yourself importing a *type* (not a pipeline/orchestration function)
+across slice boundaries, that is the signal to move the type to `shared/types.py`,
+not to leave the cross-slice import in place.
 
 ---
 
@@ -383,7 +407,10 @@ What do we gain? What do we lose? What technical debt are we taking on?
 2. **No slice without `types.py`** — domain types are documentation
 3. **No pipeline change without updating `data/baseline_scores.json`** — you must know if you regressed
 4. **No `utils/` or `helpers/`** — name what it does or put it in `shared/`
-5. **No cross-slice imports except from `backends/` and `shared/`** — a slice reads in isolation
+5. **No cross-slice *type* imports** — a type used by more than one slice lives in
+   `shared/types.py`, not in whichever slice happened to define it first. Importing
+   another slice's *pipeline/orchestration function* (e.g. `agent` calling
+   `retrieval.pipeline.run_retrieval`) is allowed — see "Cross-slice imports" above.
 6. **Commit after every completed slice** — repo history is documentation for the recruiter
 7. **`.env.example` always current** — new Settings variable = immediate update in the same commit
 

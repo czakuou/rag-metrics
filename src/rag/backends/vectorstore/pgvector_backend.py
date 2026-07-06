@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from rag.ingestion.types import Chunk, ChunkMetadata, ChunkStrategy, EmbeddedChunk
+from rag.shared.types import Chunk, ChunkMetadata, ChunkStrategy, EmbeddedChunk, ScoredChunk
 
 
 class PgVectorBackend:
@@ -70,17 +70,21 @@ class PgVectorBackend:
                 ],
             )
 
-    async def search(self, vector: list[float], k: int) -> list[EmbeddedChunk]:
+    async def search(self, vector: list[float], k: int) -> list[ScoredChunk]:
         async with self._engine.connect() as conn:
             await conn.execute(text("SET hnsw.ef_search = 40"))
             rows = (
                 await conn.execute(
                     text(
                         """
-                        SELECT id, content, document_id, chunk_index, strategy, parent_id, embedding
-                        FROM chunks
-                        WHERE embedding IS NOT NULL
-                        ORDER BY embedding <=> :vector
+                        SELECT
+                            c.id, c.content, c.document_id, c.chunk_index, c.strategy,
+                            c.parent_id, parent.content AS parent_content,
+                            1 - (c.embedding <=> :vector) AS similarity
+                        FROM chunks c
+                        LEFT JOIN chunks parent ON parent.id = c.parent_id
+                        WHERE c.embedding IS NOT NULL
+                        ORDER BY c.embedding <=> :vector
                         LIMIT :k
                         """
                     ),
@@ -88,42 +92,25 @@ class PgVectorBackend:
                 )
             ).mappings()
 
-            results: list[EmbeddedChunk] = []
-            for row in rows:
-                content = row["content"]
-                if row["parent_id"] is not None:
-                    parent = (
-                        (
-                            await conn.execute(
-                                text("SELECT content FROM chunks WHERE id = :id"),
-                                {"id": row["parent_id"]},
-                            )
-                        )
-                        .mappings()
-                        .first()
-                    )
-                    if parent is not None:
-                        content = parent["content"]
-
-                results.append(
-                    EmbeddedChunk(
-                        chunk=Chunk(
-                            id=row["id"],
-                            content=content,
-                            metadata=ChunkMetadata(
-                                source=Path(row["document_id"]),
-                                title=row["document_id"],
-                                chunk_index=row["chunk_index"],
-                                strategy=ChunkStrategy(row["strategy"]),
-                            ),
-                            parent_id=row["parent_id"],
+            return [
+                ScoredChunk(
+                    chunk=Chunk(
+                        id=row["id"],
+                        content=row["parent_content"]
+                        if row["parent_id"] is not None and row["parent_content"] is not None
+                        else row["content"],
+                        metadata=ChunkMetadata(
+                            source=Path(row["document_id"]),
+                            title=row["document_id"],
+                            chunk_index=row["chunk_index"],
+                            strategy=ChunkStrategy(row["strategy"]),
                         ),
-                        embedding=[
-                            float(value) for value in row["embedding"].strip("[]").split(",")
-                        ],
-                    )
+                        parent_id=row["parent_id"],
+                    ),
+                    relevance_score=row["similarity"],
                 )
-            return results
+                for row in rows
+            ]
 
     async def delete(self, ids: list[str]) -> None:
         async with self._engine.begin() as conn:

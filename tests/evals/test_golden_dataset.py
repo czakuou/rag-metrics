@@ -48,6 +48,10 @@ def _retrieval_pipeline(question: str) -> tuple[str, list[str]]:
 
 
 def _write_baseline_scores(report: EvalReport) -> None:
+    # Only advance the baseline when nothing regressed — a regressed run must not
+    # quietly become the new "known-good" reference for the next PR's regression check.
+    if not report.passed:
+        return
     payload: dict[str, float | bool | int | str] = {
         metric_score.name: metric_score.score for metric_score in report.scores
     }
@@ -59,10 +63,17 @@ def _write_baseline_scores(report: EvalReport) -> None:
 
 @pytest.fixture(scope="session")
 def golden_dataset_report() -> Generator[EvalReport]:
-    from rag.evals.dataset import load_golden_dataset
+    from rag.evals.dataset import load_baseline_scores, load_golden_dataset
 
     samples = load_golden_dataset(GOLDEN_DATASET_PATH)
-    report = run_evals(samples, _retrieval_pipeline, THRESHOLDS)
+    baselines = load_baseline_scores(BASELINE_SCORES_PATH)
+    report = run_evals(
+        samples,
+        _retrieval_pipeline,
+        THRESHOLDS,
+        baselines,
+        settings.eval_regression_tolerance,
+    )
     _write_baseline_scores(report)
     yield report
 
@@ -98,4 +109,43 @@ def test_golden_dataset_context_precision_meets_threshold(
     # Then
     assert metric_score.passed, (
         f"context_precision={metric_score.score:.4f} below threshold={metric_score.threshold:.4f}"
+    )
+
+
+def test_golden_dataset_faithfulness_does_not_regress_vs_baseline(
+    golden_dataset_report: EvalReport,
+) -> None:
+    # Given/When
+    metric_score = next(s for s in golden_dataset_report.scores if s.name == "faithfulness")
+
+    # Then
+    assert not metric_score.regressed, (
+        f"faithfulness={metric_score.score:.4f} regressed vs. "
+        f"baseline={metric_score.baseline} (tolerance={metric_score.regression_tolerance})"
+    )
+
+
+def test_golden_dataset_answer_relevancy_does_not_regress_vs_baseline(
+    golden_dataset_report: EvalReport,
+) -> None:
+    # Given/When
+    metric_score = next(s for s in golden_dataset_report.scores if s.name == "answer_relevancy")
+
+    # Then
+    assert not metric_score.regressed, (
+        f"answer_relevancy={metric_score.score:.4f} regressed vs. "
+        f"baseline={metric_score.baseline} (tolerance={metric_score.regression_tolerance})"
+    )
+
+
+def test_golden_dataset_context_precision_does_not_regress_vs_baseline(
+    golden_dataset_report: EvalReport,
+) -> None:
+    # Given/When
+    metric_score = next(s for s in golden_dataset_report.scores if s.name == "context_precision")
+
+    # Then
+    assert not metric_score.regressed, (
+        f"context_precision={metric_score.score:.4f} regressed vs. "
+        f"baseline={metric_score.baseline} (tolerance={metric_score.regression_tolerance})"
     )

@@ -1,8 +1,12 @@
 """Domain types for the retrieval slice."""
 
+from collections.abc import Callable
+
 from pydantic import BaseModel
 
-from rag.ingestion.types import Chunk
+from rag.shared.types import Chunk, ScoredChunk
+
+type RerankFn = Callable[[list[ScoredChunk], str], list[ScoredChunk]]
 
 
 class GradedChunk(BaseModel):

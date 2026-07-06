@@ -51,10 +51,52 @@ Run the agent interactively with `make agent`.
 ## Running evals
 
 `make eval` runs the agent over every example in `data/golden_dataset.jsonl`, scores the answers
-with RAGAS (`faithfulness`, `answer_relevancy`, `context_precision`), and compares them against the
-thresholds in `src/rag/evals/thresholds.py` (sourced from `Settings` in `config.py`). If any metric
-falls below its threshold, the CI gate fails. `data/baseline_scores.json` tracks the last known-good
-scores — it must be updated in the same commit as any pipeline change, per the rules in `CLAUDE.md`.
+with RAGAS (`faithfulness`, `answer_relevancy`, `context_precision`), and gates on two independent
+checks against the thresholds and baseline in `src/rag/config.py`:
+
+1. **Absolute threshold** — each metric must be `>= 0.85`.
+2. **Regression vs. baseline** — each metric must not drop more than
+   `eval_regression_tolerance` (0.02) below the matching value in
+   `data/baseline_scores.json`.
+
+`data/baseline_scores.json` only advances when a run passes both checks — a regressed run never
+becomes the new reference. See `src/rag/evals/types.py::MetricScore` for the gating logic.
+
+**Sample size caveat:** the golden dataset is 25 questions. At that size, a single changed
+answer moves a metric's mean by ~4 percentage points — comparable to the 0.02 regression
+tolerance itself. The gate is sized to catch the kind of regression this repo has actually
+hit (the parent-child chunking revert below, a ~0.018 drop), not to give strong statistical
+confidence at smaller deltas. Treat a borderline regression-check failure as a prompt to look
+at `failed_samples` in the eval report, not as ground truth on its own.
+
+### Chunking strategy: measured, not assumed
+
+The default chunking strategy is `fixed` (512 tokens, 64 overlap). `parent_child` was tried as the
+default and measured against the same 25-sample golden dataset:
+
+| Metric             | Fixed (current default) | Parent-child | Delta   |
+|---------------------|--------------------------|--------------|---------|
+| faithfulness        | 0.9146                   | 0.9039       | -0.0107 |
+| answer_relevancy     | 0.9176                   | 0.9218       | +0.0042 |
+| context_precision    | 0.9373                   | 0.9193       | -0.0180 |
+
+Parent-child regressed `faithfulness` and `context_precision` — the latter is the exact metric it
+was meant to improve — so the default was reverted to `fixed`. Full writeup, including why the
+regression likely happened, is in [ADR-002](docs/adr/ADR-002-chunking-strategy.md#addendum-parent-child-measured-and-reverted-2026-06-30).
+`ChunkStrategy.PARENT_CHILD` stays implemented and available for future experiments; it is just not
+the default.
+
+## CI
+
+Two independent GitHub Actions pipelines:
+
+| Workflow | Trigger | What it runs |
+|---|---|---|
+| [`tests.yml`](.github/workflows/tests.yml) | every push, any branch | `mypy`, `ruff check`, and unit tests (`pytest -m "not integration"`) — fast, no real LLM or DB calls |
+| [`evals.yml`](.github/workflows/evals.yml) | pull request to `main` | spins up Postgres + LiteLLM proxy, runs ingestion, then the RAGAS eval gate described above |
+
+The split exists so the fast unit/type/lint loop runs on every push without paying for LLM-as-judge
+calls, while the expensive RAGAS gate only runs where it matters — before code reaches `main`.
 
 ## ADRs
 
@@ -62,6 +104,7 @@ scores — it must be updated in the same commit as any pipeline change, per the
 - [ADR-002: Chunking strategy](docs/adr/ADR-002-chunking-strategy.md)
 - [ADR-003: BAML as the LLM contract layer — no agent framework](docs/adr/ADR-003-baml-no-framework.md)
 - [ADR-004: pgvector as the vector store](docs/adr/ADR-004-pgvector.md)
+- [ADR-005: shared types instead of cross-slice imports](docs/adr/ADR-005-shared-types.md)
 
 ## Development
 

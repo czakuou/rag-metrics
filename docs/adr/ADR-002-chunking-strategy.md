@@ -184,9 +184,51 @@ the vault structure makes it clearly beneficial.
   switch to `ChunkStrategy.PARENT_CHILD` and re-run evals.
 - If parent-child does not improve `context_precision`, investigate semantic chunking.
 
+## Addendum: parent-child measured and reverted (2026-06-30)
+
+Parent-child was switched on as the default (`config.py`) to test the hypothesis above.
+Results on the golden dataset, same 25 samples, same thresholds:
+
+| Metric             | Fixed (baseline) | Parent-child | Delta   |
+|---------------------|-------------------|--------------|---------|
+| faithfulness        | 0.9146            | 0.9039       | -0.0107 |
+| answer_relevancy     | 0.9176            | 0.9218       | +0.0042 |
+| context_precision    | 0.9373            | 0.9193       | -0.0180 |
+
+Parent-child regressed two of the three RAG Triad metrics, including
+`context_precision` — the exact metric it was meant to improve. The hypothesis that
+richer parent context would improve faithfulness without hurting precision did not
+hold on this dataset: the larger 1024-token parent block returned at retrieval time
+adds noise that the LLM has to filter when answering, which is consistent with the
+faithfulness drop.
+
+**Decision: reverted default to `ChunkStrategy.FIXED`.** Parent-child remains
+implemented and available via `ChunkStrategy.PARENT_CHILD` for future experiments
+(e.g. combined with the reranker, or with a smaller parent window), but is not the
+default until a configuration is found that beats the fixed-size baseline on all
+three metrics, not just one.
+
+Note that the `context_precision` delta (-0.0180) is *inside* the gate's own
+`eval_regression_tolerance` (0.02) — the CI regression check, as configured, would not
+have failed this run. The revert happened anyway, because passing the gate is not the
+same claim as the change being an improvement: parent-child regressed two of three
+metrics with no offsetting gain large enough to justify the added complexity (parent-id
+schema, 4x vectors), and a 25-sample dataset (see README "Sample size caveat") does not
+give enough resolution to trust a delta this close to the tolerance band either way.
+The gate exists to catch regressions automatically; it does not relieve the person
+reading the report of judging a borderline result on its merits.
+
+This result is also why the CI eval gate now checks regression against
+`data/baseline_scores.json` (see ADR-001 addendum / `eval_regression_tolerance` in
+`config.py`), not just an absolute threshold — the original thresholds (0.65–0.70)
+were low enough that this regression would have passed CI silently.
+
 **Implementation note:**
 
 The `ChunkStrategy` enum lives in `ingestion/types.py`.
 The `chunk()` function in `ingestion/chunker.py` dispatches on it.
-The active strategy is set in `config.py` as `chunking_strategy: str = "fixed"`.
+The active strategy is set in `config.py` as
+`chunking_strategy: ChunkStrategy = ChunkStrategy.FIXED` — typed as the enum itself,
+not a raw string, so an invalid strategy name fails at settings load instead of at
+dispatch time.
 No code outside `ingestion/` needs to change when the strategy changes.

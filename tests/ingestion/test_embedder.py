@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from rag.ingestion.embedder import embed
-from rag.ingestion.types import Chunk, ChunkMetadata, ChunkStrategy
+from rag.shared.types import Chunk, ChunkMetadata, ChunkStrategy
 
 FAKE_EMBED = lambda texts: [[0.1] * 1536 for _ in texts]  # noqa: E731
 

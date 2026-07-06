@@ -9,7 +9,8 @@ from rag.ingestion.chunker import (
     _tokenizer,
     chunk,
 )
-from rag.ingestion.types import ChunkStrategy, Document, DocumentMetadata
+from rag.ingestion.types import Document, DocumentMetadata
+from rag.shared.types import ChunkStrategy
 
 TOKEN_TOLERANCE = 10
 

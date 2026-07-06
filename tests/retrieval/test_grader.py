@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from rag.ingestion.types import Chunk, ChunkMetadata, ChunkStrategy, EmbeddedChunk
 from rag.retrieval.grader import grade
+from rag.shared.types import Chunk, ChunkMetadata, ChunkStrategy, ScoredChunk
 
 
-def _make_embedded_chunk(content: str, embedding: list[float]) -> EmbeddedChunk:
-    return EmbeddedChunk(
+def _make_scored_chunk(content: str, relevance_score: float) -> ScoredChunk:
+    return ScoredChunk(
         chunk=Chunk(
             id=content,
             content=content,
@@ -16,17 +16,16 @@ def _make_embedded_chunk(content: str, embedding: list[float]) -> EmbeddedChunk:
                 strategy=ChunkStrategy.FIXED,
             ),
         ),
-        embedding=embedding,
+        relevance_score=relevance_score,
     )
 
 
 def test_grade_marks_chunk_as_relevant_when_similarity_above_threshold() -> None:
     # Given
-    similar_chunk = _make_embedded_chunk("similar", embedding=[1.0, 0.0])
-    query_embedding = [1.0, 0.0]
+    similar_chunk = _make_scored_chunk("similar", relevance_score=1.0)
 
     # When
-    graded = grade([similar_chunk], query_embedding, threshold=0.5)
+    graded = grade([similar_chunk], threshold=0.5)
 
     # Then
     assert graded[0].is_relevant
@@ -35,11 +34,10 @@ def test_grade_marks_chunk_as_relevant_when_similarity_above_threshold() -> None
 
 def test_grade_marks_chunk_as_irrelevant_when_similarity_below_threshold() -> None:
     # Given
-    dissimilar_chunk = _make_embedded_chunk("dissimilar", embedding=[0.0, 1.0])
-    query_embedding = [1.0, 0.0]
+    dissimilar_chunk = _make_scored_chunk("dissimilar", relevance_score=0.0)
 
     # When
-    graded = grade([dissimilar_chunk], query_embedding, threshold=0.5)
+    graded = grade([dissimilar_chunk], threshold=0.5)
 
     # Then
     assert not graded[0].is_relevant
@@ -49,13 +47,12 @@ def test_grade_marks_chunk_as_irrelevant_when_similarity_below_threshold() -> No
 def test_grade_preserves_chunk_order_and_count() -> None:
     # Given
     chunks = [
-        _make_embedded_chunk("first", embedding=[1.0, 0.0]),
-        _make_embedded_chunk("second", embedding=[0.0, 1.0]),
+        _make_scored_chunk("first", relevance_score=1.0),
+        _make_scored_chunk("second", relevance_score=0.0),
     ]
-    query_embedding = [1.0, 0.0]
 
     # When
-    graded = grade(chunks, query_embedding, threshold=0.5)
+    graded = grade(chunks, threshold=0.5)
 
     # Then
     assert [g.chunk.content for g in graded] == ["first", "second"]

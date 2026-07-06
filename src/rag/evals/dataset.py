@@ -22,3 +22,15 @@ def load_golden_dataset(path: Path) -> list[EvalSample]:
                     f"Invalid golden dataset entry at line {line_number}: {stripped!r}"
                 ) from exc
     return samples
+
+
+def load_baseline_scores(path: Path) -> dict[str, float]:
+    """Returns the last known-good metric scores, or {} if no baseline exists yet."""
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return {
+        name: score
+        for name, score in payload.items()
+        if isinstance(score, (int, float)) and not isinstance(score, bool)
+    }

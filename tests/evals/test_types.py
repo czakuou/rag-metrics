@@ -75,3 +75,59 @@ def test_metric_scores_failing_questions_includes_only_samples_below_threshold()
 
     # Then
     assert failing == [SAMPLE_B.question]
+
+
+def test_metric_score_fails_when_score_drops_below_baseline_minus_tolerance() -> None:
+    # Given
+    per_metric_scores = {
+        "faithfulness": [0.86, 0.86],  # above the 0.7 threshold, but a regression
+        "answer_relevancy": [0.9, 0.9],
+        "context_precision": [0.9, 0.9],
+    }
+    baselines = {"faithfulness": 0.92, "answer_relevancy": 0.9, "context_precision": 0.9}
+
+    # When
+    metric_scores = MetricScores.from_ragas_result(
+        per_metric_scores, ALL_THRESHOLDS, baselines, regression_tolerance=0.02
+    )
+
+    # Then
+    faithfulness = next(s for s in metric_scores.scores if s.name == "faithfulness")
+    assert faithfulness.regressed is True
+    assert faithfulness.passed is False
+
+
+def test_metric_score_passes_when_score_drops_within_regression_tolerance() -> None:
+    # Given
+    per_metric_scores = {
+        "faithfulness": [0.905, 0.905],  # 1.5pp below baseline — within 2pp tolerance
+        "answer_relevancy": [0.9, 0.9],
+        "context_precision": [0.9, 0.9],
+    }
+    baselines = {"faithfulness": 0.92, "answer_relevancy": 0.9, "context_precision": 0.9}
+
+    # When
+    metric_scores = MetricScores.from_ragas_result(
+        per_metric_scores, ALL_THRESHOLDS, baselines, regression_tolerance=0.02
+    )
+
+    # Then
+    faithfulness = next(s for s in metric_scores.scores if s.name == "faithfulness")
+    assert faithfulness.regressed is False
+    assert faithfulness.passed is True
+
+
+def test_metric_score_is_not_regressed_when_no_baseline_exists_yet() -> None:
+    # Given
+    per_metric_scores = {
+        "faithfulness": [0.9, 0.9],
+        "answer_relevancy": [0.9, 0.9],
+        "context_precision": [0.9, 0.9],
+    }
+
+    # When — no baselines passed, e.g. first-ever eval run
+    metric_scores = MetricScores.from_ragas_result(per_metric_scores, ALL_THRESHOLDS)
+
+    # Then
+    faithfulness = next(s for s in metric_scores.scores if s.name == "faithfulness")
+    assert faithfulness.regressed is False

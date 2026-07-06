@@ -12,10 +12,14 @@ def score_report(
     thresholds: dict[str, float],
     total_samples: int,
     failed_samples: list[str],
+    baselines: dict[str, float] | None = None,
+    regression_tolerance: float = 0.0,
 ) -> EvalReport:
     per_metric_scores = {metric.name: result[metric.name] for metric in RAGAS_METRICS}
 
-    metric_scores = MetricScores.from_ragas_result(per_metric_scores, thresholds)
+    metric_scores = MetricScores.from_ragas_result(
+        per_metric_scores, thresholds, baselines, regression_tolerance
+    )
     threshold_failures = metric_scores.failing_questions(row_samples, per_metric_scores)
 
     all_failed = list(failed_samples)

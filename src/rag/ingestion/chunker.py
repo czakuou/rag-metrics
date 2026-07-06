@@ -4,7 +4,8 @@ from collections.abc import Callable
 
 from tokenizers import Tokenizer
 
-from rag.ingestion.types import Chunk, ChunkMetadata, ChunkStrategy, Document
+from rag.ingestion.types import Document
+from rag.shared.types import Chunk, ChunkMetadata, ChunkStrategy
 
 _tokenizer: Tokenizer = Tokenizer.from_pretrained("gpt2")
 

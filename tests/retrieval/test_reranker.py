@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from rag.ingestion.types import Chunk, ChunkMetadata, ChunkStrategy, EmbeddedChunk
-from rag.retrieval.reranker import rerank
+from rag.retrieval.reranker import make_cross_encoder_reranker
+from rag.shared.types import Chunk, ChunkMetadata, ChunkStrategy, ScoredChunk
 
 
-def _make_embedded_chunk(content: str) -> EmbeddedChunk:
-    return EmbeddedChunk(
+def _make_scored_chunk(content: str) -> ScoredChunk:
+    return ScoredChunk(
         chunk=Chunk(
             id=content,
             content=content,
@@ -16,17 +16,18 @@ def _make_embedded_chunk(content: str) -> EmbeddedChunk:
                 strategy=ChunkStrategy.FIXED,
             ),
         ),
-        embedding=[1.0, 0.0],
+        relevance_score=0.9,
     )
 
 
 def test_reranker_sorts_chunks_by_relevance_to_query() -> None:
     # Given
-    relevant_chunk = _make_embedded_chunk(
+    relevant_chunk = _make_scored_chunk(
         "pgvector is a PostgreSQL extension for vector similarity search"
     )
-    irrelevant_chunk = _make_embedded_chunk("bananas are a good source of potassium")
+    irrelevant_chunk = _make_scored_chunk("bananas are a good source of potassium")
     chunks = [irrelevant_chunk, relevant_chunk]
+    rerank = make_cross_encoder_reranker()
 
     # When
     reranked = rerank(chunks, "what is pgvector?")
@@ -37,7 +38,10 @@ def test_reranker_sorts_chunks_by_relevance_to_query() -> None:
 
 
 def test_reranker_returns_empty_list_for_no_chunks() -> None:
-    # Given/When
+    # Given
+    rerank = make_cross_encoder_reranker()
+
+    # When
     reranked = rerank([], "any query")
 
     # Then

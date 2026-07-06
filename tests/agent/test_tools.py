@@ -2,8 +2,8 @@ from pathlib import Path
 
 from rag.agent.baml_client.types import Action
 from rag.agent.tools import dispatch_tool
-from rag.ingestion.types import Chunk, ChunkMetadata, ChunkStrategy
 from rag.retrieval.types import GradedChunk, RetrievalResult
+from rag.shared.types import Chunk, ChunkMetadata, ChunkStrategy
 
 
 def _make_graded_chunk(content: str, source: str, score: float, threshold: float) -> GradedChunk:

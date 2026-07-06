@@ -3,7 +3,7 @@
 import structlog
 
 from rag.backends.embedding.protocol import EmbedFn
-from rag.ingestion.types import Chunk, EmbeddedChunk
+from rag.shared.types import Chunk, EmbeddedChunk
 
 logger = structlog.get_logger()
 
