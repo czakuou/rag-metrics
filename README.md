@@ -98,6 +98,44 @@ Two independent GitHub Actions pipelines:
 The split exists so the fast unit/type/lint loop runs on every push without paying for LLM-as-judge
 calls, while the expensive RAGAS gate only runs where it matters — before code reaches `main`.
 
+### Known cost optimisations not yet implemented
+
+The current eval gate runs on every PR to `main` regardless of what changed. Three improvements
+are worth considering as the project grows:
+
+**Path-scoped triggers.** `evals.yml` could use GitHub Actions `paths:` filtering to skip the
+eval run when only documentation, tests, or non-pipeline code changed — for example:
+
+```yaml
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/rag/ingestion/**"
+      - "src/rag/retrieval/**"
+      - "src/rag/agent/**"
+      - "src/rag/backends/**"
+      - "data/golden_dataset.jsonl"
+```
+
+A change that only touches `README.md` or `tests/` would then skip the ~$0.02 RAGAS run entirely.
+The tradeoff: a `config.py` threshold change or a `shared/` refactor that silently affects pipeline
+behaviour would also be skipped unless `paths:` is kept up to date — creating a maintenance burden
+that must be weighed against the cost saving.
+
+**RAGAS result caching.** Each sample in the golden dataset produces a deterministic
+`(question, retrieved_contexts, answer)` triple for a given pipeline state. If those inputs have
+not changed since the last run, the RAGAS judge score cannot change either. A content-hash cache
+keyed on that triple would let unchanged samples skip the LLM judge call entirely, making the
+per-PR cost proportional to how many samples were actually affected by the change rather than the
+full dataset size. Not implemented: adds complexity and a cache invalidation surface.
+
+**Parallel RAGAS evaluation.** `ragas.evaluate()` supports async evaluation (`is_async=True`),
+which would run the ~75 judge calls (25 samples × 3 metrics) concurrently instead of
+sequentially. At 25 samples this is not a bottleneck, but at 200+ samples the wall-clock time
+difference becomes meaningful. Not enabled: the current sequential mode is simpler to reason about
+and debug when a judge call fails.
+
 ## ADRs
 
 - [ADR-001: Eval framework](docs/adr/ADR-001-eval-framework.md)
