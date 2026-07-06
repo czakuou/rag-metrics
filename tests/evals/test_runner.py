@@ -53,7 +53,7 @@ def test_run_evals_returns_failed_report_when_score_below_threshold() -> None:
     assert report.passed is False
 
 
-def test_run_evals_continues_when_pipeline_fn_raises() -> None:
+def test_run_evals_fails_report_when_pipeline_fn_raises_for_a_sample() -> None:
     # Given
     samples = [_make_sample(f"question {i}") for i in range(3)]
     call_count = 0
@@ -70,5 +70,7 @@ def test_run_evals_continues_when_pipeline_fn_raises() -> None:
     # When
     report = run_evals(samples, flaky_pipeline, thresholds)
 
-    # Then
-    assert samples[1].question in report.failed_samples
+    # Then — the surviving samples are still evaluated, but a run that lost a sample
+    # to a crash must not pass: its metric means only describe the samples that survived
+    assert samples[1].question in report.pipeline_errors
+    assert report.passed is False

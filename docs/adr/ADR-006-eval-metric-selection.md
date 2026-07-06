@@ -186,3 +186,72 @@ purpose.
 - If judge LLM is swapped to a model with different calibration, baseline scores are no
   longer comparable and must be reset. This is expected but must be done explicitly, not
   silently.
+- The ~0.01 judge-noise estimate behind the 0.02 tolerance is from informal repeated
+  runs during development; a committed artifact (N repeated runs on an unchanged
+  pipeline, per-metric variance) would make the tolerance defensible with data instead
+  of recollection.
+
+## Addendum: two eval levels and pipeline-error gating (2026-07-06)
+
+A review of the eval gate found two structural gaps. Both are design decisions worth
+recording, not just fixes.
+
+### Gap 1 — the CI gate did not evaluate the product
+
+`evals.yml` gated only `test_golden_dataset.py`, whose pipeline is retrieval + a bare
+one-shot synthesis prompt. The system users actually run (`make agent`) is the ReAct
+agent — a different generation path (BAML-driven loop, tool dispatch, iterative
+context accumulation). An agent eval existed (`test_agent_golden_dataset.py`) but was
+not wired into CI and had no baseline or regression check. A change to the agent loop
+(prompt, max iterations, tool dispatch) could regress user-facing quality with CI
+fully green.
+
+**Decision: two gates, both blocking, one golden dataset.**
+
+| Gate | Pipeline under test | Baseline file | What a failure isolates |
+|---|---|---|---|
+| Component (`test_golden_dataset.py`) | retrieval → rerank → grade → single synthesis call | `data/baseline_scores.json` | chunking, embedding, search, rerank, grading changes |
+| End-to-end (`test_agent_golden_dataset.py`) | full ReAct agent | `data/agent_baseline_scores.json` | agent prompt, loop control, tool dispatch changes |
+
+Why keep the component gate at all, instead of only gating the agent:
+
+1. **Fault isolation.** When the end-to-end gate fails, the component gate answers the
+   first diagnostic question — "did retrieval regress, or did the agent?" — without a
+   separate investigation.
+2. **Noise separation.** The agent path adds variance (loop nondeterminism, tool-call
+   ordering) on top of judge noise. The component gate measures retrieval changes
+   through the least noisy pipeline that still exercises them.
+
+Why separate baseline files: the two pipelines produce different answer distributions,
+so a shared baseline would let an agent-path improvement mask a retrieval regression
+(or vice versa). Regression must be measured against the same pipeline's history.
+
+Both gates share `THRESHOLDS` and `eval_regression_tolerance` — the failure modes and
+the floor of acceptable quality are properties of the metrics, not of the pipeline
+under test.
+
+**Cost:** this roughly doubles judge calls per PR (2 × 25 samples × 3 metrics) plus
+the agent's own generation calls — still on the order of a few cents per PR. The
+cost levers in README ("Known cost optimisations") apply unchanged if this grows.
+
+### Gap 2 — a crashed sample weakened the gate instead of failing it
+
+`build_evaluation_dataset` drops a sample whose pipeline call raises, and the metric
+means are computed over the survivors. Previously `EvalReport.passed` looked only at
+those means: a run where 10 of 25 samples crashed could pass CI on the surviving 15 —
+survivorship bias built into the gate — and then advance the baseline with
+`total_samples: 25`.
+
+**Decision:** `EvalReport` now separates `pipeline_errors` (sample crashed — excluded
+from the dataset, so the means say nothing about it) from `failed_samples` (sample
+scored below a metric threshold — diagnostic only, since the gate is defined on
+means). `passed` is a computed property that requires all metrics to pass **and**
+`pipeline_errors` to be empty, so an inconsistent report cannot be constructed. The
+baseline advancement rule inherits this for free: a partially-errored run never
+becomes the new reference.
+
+### Also fixed — thresholds defined once
+
+`evals.yml` duplicated the threshold and tolerance values as env vars, creating a
+second source of truth that could drift from `config.py` (which `make eval` uses
+locally). The env block was removed; CI and local runs now read the same defaults.

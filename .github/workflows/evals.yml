@@ -63,35 +63,48 @@ jobs:
       - name: Run ingestion
         run: uv run python -m rag.ingestion.pipeline
 
-      - name: Run RAGAS eval suite
-        env:
-          EVAL_FAITHFULNESS_THRESHOLD: "0.85"
-          EVAL_ANSWER_RELEVANCY_THRESHOLD: "0.85"
-          EVAL_CONTEXT_PRECISION_THRESHOLD: "0.85"
-          EVAL_REGRESSION_TOLERANCE: "0.02"
-        run: uv run pytest -m integration tests/evals/test_golden_dataset.py -v
+      # Thresholds and regression tolerance deliberately come from config.py defaults —
+      # duplicating them as env vars here created a second source of truth that could
+      # silently drift from what `make eval` uses locally.
+      #
+      # Two gates, one golden dataset (see ADR-006, "Two eval levels"):
+      #   - test_golden_dataset.py       — component gate: retrieval + bare synthesis
+      #   - test_agent_golden_dataset.py — end-to-end gate: the actual ReAct agent
+      # Each keeps its own baseline file; the score distributions are not comparable.
+      - name: Run RAGAS eval gates (component + end-to-end agent)
+        run: >
+          uv run pytest -m integration -v
+          tests/evals/test_golden_dataset.py
+          tests/evals/test_agent_golden_dataset.py
 
       - name: Upload eval results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: eval-results
-          path: data/baseline_scores.json
+          path: |
+            data/baseline_scores.json
+            data/agent_baseline_scores.json
+          if-no-files-found: warn
 
-      # _write_baseline_scores() (tests/evals/test_golden_dataset.py) only rewrites this
-      # file locally in the runner's checkout, and only when every metric passed — see
-      # ADR-001 addendum. Without this step that updated file never leaves the runner, so
-      # `data/baseline_scores.json` on `main` would never actually advance after a passing
-      # PR despite the ADR's "baseline only advances when a run passes" claim. Committing
-      # back to the PR branch (not `main` directly) keeps the update visible in the PR diff
-      # for review instead of silently mutating `main` out-of-band.
-      - name: Commit updated baseline if it advanced
+      # save_baseline_scores() (rag/evals/dataset.py) only rewrites these files locally
+      # in the runner's checkout, and only when every metric passed — see ADR-001
+      # addendum. Without this step the updated files never leave the runner, so the
+      # baselines on `main` would never actually advance after a passing PR despite the
+      # ADR's "baseline only advances when a run passes" claim. Committing back to the
+      # PR branch (not `main` directly) keeps the update visible in the PR diff for
+      # review instead of silently mutating `main` out-of-band.
+      - name: Commit updated baselines if they advanced
         if: always()
         run: |
-          if ! git diff --quiet -- data/baseline_scores.json; then
+          git add -- data/baseline_scores.json
+          # The agent baseline does not exist until its first passing run.
+          if [ -f data/agent_baseline_scores.json ]; then
+            git add -- data/agent_baseline_scores.json
+          fi
+          if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add data/baseline_scores.json
             git commit -m "chore: update eval baseline scores [skip ci]"
             git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
           else

@@ -92,21 +92,38 @@ class MetricScores(BaseModel):
 
 
 class EvalReport(BaseModel):
+    """Result of one eval run against the golden dataset.
+
+    `pipeline_errors` holds questions whose pipeline call raised: those samples were
+    excluded from the RAGAS dataset, so the metric means say nothing about them. They
+    must gate `passed` — otherwise the run is scored only on the samples that survived
+    (survivorship bias) and a partially-broken pipeline could advance the baseline.
+
+    `failed_samples` (per-question scores below a metric's threshold) is diagnostic
+    only: the gate is defined on metric means, and a 25-sample mean tolerates
+    individual weak answers by design.
+    """
+
     scores: list[MetricScore]
-    passed: bool  # True only if ALL metrics passed
     total_samples: int
-    failed_samples: list[str]  # questions that contributed to failures
+    pipeline_errors: list[str]
+    failed_samples: list[str]
+
+    @property
+    def passed(self) -> bool:
+        return all(score.passed for score in self.scores) and not self.pipeline_errors
 
     @classmethod
     def from_metric_scores(
         cls,
         metric_scores: MetricScores,
         total_samples: int,
+        pipeline_errors: list[str],
         failed_samples: list[str],
     ) -> "EvalReport":
         return cls(
             scores=metric_scores.scores,
-            passed=metric_scores.all_passed,
             total_samples=total_samples,
+            pipeline_errors=pipeline_errors,
             failed_samples=failed_samples,
         )

@@ -1,4 +1,4 @@
-.PHONY: install generate ingest eval agent typecheck test lint format pre-commit up down logs-llm
+.PHONY: install generate ingest eval eval-retrieval eval-agent agent typecheck test lint format pre-commit up down logs-llm
 
 install:
 	uv sync
@@ -25,8 +25,16 @@ LOCAL_ENV := DATABASE_URL=postgresql+asyncpg://rag:changeme@localhost:5432/rag_d
 ingest:
 	$(LOCAL_ENV) uv run python -m rag.ingestion.pipeline
 
-eval:
+# Both eval gates, same as CI (see ADR-006, "Two eval levels").
+eval: eval-retrieval eval-agent
+
+# Component gate: retrieval + bare synthesis — cheaper, deterministic pipeline path.
+eval-retrieval:
 	$(LOCAL_ENV) uv run pytest -m integration tests/evals/test_golden_dataset.py -v
+
+# End-to-end gate: the actual ReAct agent, including tool dispatch and the BAML loop.
+eval-agent:
+	$(LOCAL_ENV) uv run pytest -m integration tests/evals/test_agent_golden_dataset.py -v
 
 agent:
 	uv run python -m rag.agent.pipeline

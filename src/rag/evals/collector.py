@@ -14,17 +14,22 @@ def build_evaluation_dataset(
     samples: list[EvalSample],
     pipeline_fn: PipelineFn,
 ) -> tuple[EvaluationDataset, list[EvalSample], list[str]]:
-    """Returns the RAGAS dataset, the samples included in it, and questions that errored."""
+    """Returns the RAGAS dataset, the samples included in it, and questions that errored.
+
+    Errored questions are excluded from the dataset (RAGAS cannot score a sample with
+    no answer), so the caller must surface them as `EvalReport.pipeline_errors` — they
+    gate the run, they are not silently dropped.
+    """
     rows: list[dict[str, str | list[str]]] = []
     row_samples: list[EvalSample] = []
-    failed_samples: list[str] = []
+    pipeline_errors: list[str] = []
 
     for sample in samples:
         try:
             answer, contexts = pipeline_fn(sample.question)
         except Exception:
             logger.error("pipeline_fn raised for sample", question=sample.question)
-            failed_samples.append(sample.question)
+            pipeline_errors.append(sample.question)
             continue
         rows.append(
             {
@@ -36,4 +41,4 @@ def build_evaluation_dataset(
         )
         row_samples.append(sample)
 
-    return EvaluationDataset.from_list(rows), row_samples, failed_samples
+    return EvaluationDataset.from_list(rows), row_samples, pipeline_errors

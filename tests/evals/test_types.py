@@ -1,6 +1,6 @@
 """Tests for rag.evals.types value objects."""
 
-from rag.evals.types import EvalSample, MetricScores
+from rag.evals.types import EvalReport, EvalSample, MetricScores
 
 SAMPLE_A = EvalSample(
     question="q1", ground_truth="gt1", source_notes=["a.md"], query_type="factual"
@@ -131,3 +131,48 @@ def test_metric_score_is_not_regressed_when_no_baseline_exists_yet() -> None:
     # Then
     faithfulness = next(s for s in metric_scores.scores if s.name == "faithfulness")
     assert faithfulness.regressed is False
+
+
+def _passing_metric_scores() -> MetricScores:
+    per_metric_scores = {
+        "faithfulness": [0.9, 0.9],
+        "answer_relevancy": [0.9, 0.9],
+        "context_precision": [0.9, 0.9],
+    }
+    return MetricScores.from_ragas_result(per_metric_scores, ALL_THRESHOLDS)
+
+
+def test_eval_report_passes_when_all_metrics_pass_and_no_pipeline_errors() -> None:
+    # Given / When
+    report = EvalReport.from_metric_scores(
+        _passing_metric_scores(), total_samples=2, pipeline_errors=[], failed_samples=[]
+    )
+
+    # Then
+    assert report.passed is True
+
+
+def test_eval_report_fails_when_a_sample_errored_even_if_all_metrics_pass() -> None:
+    # Given — metric means look healthy, but one sample never made it into the dataset
+    report = EvalReport.from_metric_scores(
+        _passing_metric_scores(),
+        total_samples=3,
+        pipeline_errors=[SAMPLE_A.question],
+        failed_samples=[],
+    )
+
+    # When / Then — the means only describe the samples that survived
+    assert report.passed is False
+
+
+def test_eval_report_passes_when_individual_samples_fall_below_threshold() -> None:
+    # Given — per-sample threshold failures are diagnostic; the gate is on metric means
+    report = EvalReport.from_metric_scores(
+        _passing_metric_scores(),
+        total_samples=2,
+        pipeline_errors=[],
+        failed_samples=[SAMPLE_B.question],
+    )
+
+    # When / Then
+    assert report.passed is True

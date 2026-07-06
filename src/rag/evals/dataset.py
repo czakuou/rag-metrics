@@ -1,11 +1,12 @@
-"""Loads the golden dataset used to evaluate the RAG pipeline."""
+"""Loads the golden dataset and reads/writes baseline scores for the eval gates."""
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import ValidationError
 
-from rag.evals.types import EvalSample
+from rag.evals.types import EvalReport, EvalSample
 
 
 def load_golden_dataset(path: Path) -> list[EvalSample]:
@@ -34,3 +35,21 @@ def load_baseline_scores(path: Path) -> dict[str, float]:
         for name, score in payload.items()
         if isinstance(score, (int, float)) and not isinstance(score, bool)
     }
+
+
+def save_baseline_scores(report: EvalReport, path: Path) -> None:
+    """Advances the baseline file — but only when the run passed.
+
+    A run that regressed, or that lost samples to pipeline errors, must not become
+    the new known-good reference: that would silently reset the regression check to
+    the degraded level and defeat its purpose (see ADR-006, baseline advancement rule).
+    """
+    if not report.passed:
+        return
+    payload: dict[str, float | bool | int | str] = {
+        metric_score.name: metric_score.score for metric_score in report.scores
+    }
+    payload["passed"] = report.passed
+    payload["total_samples"] = report.total_samples
+    payload["timestamp"] = datetime.now(UTC).isoformat()
+    path.write_text(json.dumps(payload, indent=2) + "\n")

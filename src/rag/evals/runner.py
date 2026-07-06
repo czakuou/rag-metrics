@@ -16,7 +16,7 @@ def run_evals(
     baselines: dict[str, float] | None = None,
     regression_tolerance: float = 0.0,
 ) -> EvalReport:
-    dataset, row_samples, failed_samples = build_evaluation_dataset(samples, pipeline_fn)
+    dataset, row_samples, pipeline_errors = build_evaluation_dataset(samples, pipeline_fn)
 
     result = evaluate(
         dataset,
@@ -31,7 +31,7 @@ def run_evals(
         result,
         thresholds,
         len(samples),
-        failed_samples,
+        pipeline_errors,
         baselines,
         regression_tolerance,
     )

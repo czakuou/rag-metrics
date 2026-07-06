@@ -11,7 +11,7 @@ def score_report(
     result: EvaluationResult,
     thresholds: dict[str, float],
     total_samples: int,
-    failed_samples: list[str],
+    pipeline_errors: list[str],
     baselines: dict[str, float] | None = None,
     regression_tolerance: float = 0.0,
 ) -> EvalReport:
@@ -22,7 +22,6 @@ def score_report(
     )
     threshold_failures = metric_scores.failing_questions(row_samples, per_metric_scores)
 
-    all_failed = list(failed_samples)
-    all_failed.extend(question for question in threshold_failures if question not in all_failed)
-
-    return EvalReport.from_metric_scores(metric_scores, total_samples, all_failed)
+    return EvalReport.from_metric_scores(
+        metric_scores, total_samples, pipeline_errors, threshold_failures
+    )

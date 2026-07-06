@@ -50,17 +50,32 @@ Run the agent interactively with `make agent`.
 
 ## Running evals
 
-`make eval` runs the agent over every example in `data/golden_dataset.jsonl`, scores the answers
-with RAGAS (`faithfulness`, `answer_relevancy`, `context_precision`), and gates on two independent
-checks against the thresholds and baseline in `src/rag/config.py`:
+`make eval` runs **two gates** over every example in `data/golden_dataset.jsonl`, scoring answers
+with RAGAS (`faithfulness`, `answer_relevancy`, `context_precision`):
+
+| Gate | Command | Pipeline under test | Baseline file |
+|---|---|---|---|
+| Component | `make eval-retrieval` | retrieval → rerank → grade → single synthesis call | `data/baseline_scores.json` |
+| End-to-end | `make eval-agent` | the actual ReAct agent (BAML loop + tool dispatch) | `data/agent_baseline_scores.json` |
+
+The component gate isolates retrieval changes through the least noisy pipeline that exercises
+them; the end-to-end gate measures what users actually get. When the end-to-end gate fails, the
+component gate answers the first diagnostic question — "did retrieval regress, or did the
+agent?" — for free. Full rationale in
+[ADR-006](docs/adr/ADR-006-eval-metric-selection.md#addendum-two-eval-levels-and-pipeline-error-gating-2026-07-06).
+
+Each gate applies three independent checks against the thresholds in `src/rag/config.py`:
 
 1. **Absolute threshold** — each metric must be `>= 0.85`.
 2. **Regression vs. baseline** — each metric must not drop more than
-   `eval_regression_tolerance` (0.02) below the matching value in
-   `data/baseline_scores.json`.
+   `eval_regression_tolerance` (0.02) below the matching value in that gate's baseline file.
+3. **No pipeline errors** — a sample that crashes the pipeline is excluded from the metric
+   means, so errors fail the gate directly; otherwise a partially-broken pipeline could pass
+   on the samples that survived.
 
-`data/baseline_scores.json` only advances when a run passes both checks — a regressed run never
-becomes the new reference. See `src/rag/evals/types.py::MetricScore` for the gating logic.
+A baseline file only advances when a run passes all checks — a regressed or partially-errored
+run never becomes the new reference. See `src/rag/evals/types.py::MetricScore` and
+`EvalReport.passed` for the gating logic.
 
 **Sample size caveat:** the golden dataset is 25 questions. At that size, a single changed
 answer moves a metric's mean by ~4 percentage points — comparable to the 0.02 regression
@@ -93,7 +108,7 @@ Two independent GitHub Actions pipelines:
 | Workflow | Trigger | What it runs |
 |---|---|---|
 | [`tests.yml`](.github/workflows/tests.yml) | every push, any branch | `mypy`, `ruff check`, and unit tests (`pytest -m "not integration"`) — fast, no real LLM or DB calls |
-| [`evals.yml`](.github/workflows/evals.yml) | pull request to `main` | spins up Postgres + LiteLLM proxy, runs ingestion, then the RAGAS eval gate described above |
+| [`evals.yml`](.github/workflows/evals.yml) | pull request to `main` | spins up Postgres + LiteLLM proxy, runs ingestion, then **both** RAGAS eval gates described above (component + end-to-end agent) |
 
 The split exists so the fast unit/type/lint loop runs on every push without paying for LLM-as-judge
 calls, while the expensive RAGAS gate only runs where it matters — before code reaches `main`.
@@ -118,7 +133,8 @@ on:
       - "data/golden_dataset.jsonl"
 ```
 
-A change that only touches `README.md` or `tests/` would then skip the ~$0.02 RAGAS run entirely.
+A change that only touches `README.md` or `tests/` would then skip the ~$0.04 RAGAS run (two
+gates) entirely.
 The tradeoff: a `config.py` threshold change or a `shared/` refactor that silently affects pipeline
 behaviour would also be skipped unless `paths:` is kept up to date — creating a maintenance burden
 that must be weighed against the cost saving.
@@ -131,7 +147,7 @@ per-PR cost proportional to how many samples were actually affected by the chang
 full dataset size. Not implemented: adds complexity and a cache invalidation surface.
 
 **Parallel RAGAS evaluation.** `ragas.evaluate()` supports async evaluation (`is_async=True`),
-which would run the ~75 judge calls (25 samples × 3 metrics) concurrently instead of
+which would run the ~75 judge calls per gate (25 samples × 3 metrics) concurrently instead of
 sequentially. At 25 samples this is not a bottleneck, but at 200+ samples the wall-clock time
 difference becomes meaningful. Not enabled: the current sequential mode is simpler to reason about
 and debug when a judge call fails.

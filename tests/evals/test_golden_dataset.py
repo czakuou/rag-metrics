@@ -1,4 +1,9 @@
-"""CI eval gate — runs the golden dataset through RAGAS and asserts each metric's threshold.
+"""Component-level CI eval gate: golden dataset -> retrieval + bare synthesis -> RAGAS.
+
+This gate isolates the retrieval pipeline (chunking, search, rerank, grade) plus a
+single deterministic synthesis call. It is one of two gates — the end-to-end gate over
+the actual ReAct agent lives in test_agent_golden_dataset.py, with its own baseline
+file. See ADR-006 ("Two eval levels") for why both exist.
 
 Requires OPENAI_API_KEY (and the other env vars consumed by rag.config.Settings) since
 RAGAS' faithfulness/answer_relevancy/context_precision metrics call a real LLM judge.
@@ -6,14 +11,13 @@ Run explicitly with: pytest -m integration tests/evals/test_golden_dataset.py
 """
 
 import asyncio
-import json
 from collections.abc import Generator
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from rag.config import settings
+from rag.evals.dataset import load_baseline_scores, load_golden_dataset, save_baseline_scores
 from rag.evals.runner import run_evals
 from rag.evals.thresholds import THRESHOLDS
 from rag.evals.types import EvalReport
@@ -47,24 +51,8 @@ def _retrieval_pipeline(question: str) -> tuple[str, list[str]]:
     return _synthesize_answer(question, contexts), contexts
 
 
-def _write_baseline_scores(report: EvalReport) -> None:
-    # Only advance the baseline when nothing regressed — a regressed run must not
-    # quietly become the new "known-good" reference for the next PR's regression check.
-    if not report.passed:
-        return
-    payload: dict[str, float | bool | int | str] = {
-        metric_score.name: metric_score.score for metric_score in report.scores
-    }
-    payload["passed"] = report.passed
-    payload["total_samples"] = report.total_samples
-    payload["timestamp"] = datetime.now(UTC).isoformat()
-    BASELINE_SCORES_PATH.write_text(json.dumps(payload, indent=2) + "\n")
-
-
 @pytest.fixture(scope="session")
 def golden_dataset_report() -> Generator[EvalReport]:
-    from rag.evals.dataset import load_baseline_scores, load_golden_dataset
-
     samples = load_golden_dataset(GOLDEN_DATASET_PATH)
     baselines = load_baseline_scores(BASELINE_SCORES_PATH)
     report = run_evals(
@@ -74,8 +62,22 @@ def golden_dataset_report() -> Generator[EvalReport]:
         baselines,
         settings.eval_regression_tolerance,
     )
-    _write_baseline_scores(report)
+    save_baseline_scores(report, BASELINE_SCORES_PATH)
     yield report
+
+
+def test_golden_dataset_every_sample_completes_the_pipeline(
+    golden_dataset_report: EvalReport,
+) -> None:
+    # Given/When: golden_dataset_report ran the full RAGAS suite once for the session
+
+    # Then — a sample that crashes the pipeline is excluded from the metric means, so
+    # the means alone can look healthy while part of the dataset silently disappeared.
+    assert not golden_dataset_report.pipeline_errors, (
+        f"{len(golden_dataset_report.pipeline_errors)} of "
+        f"{golden_dataset_report.total_samples} samples raised in the pipeline: "
+        f"{golden_dataset_report.pipeline_errors}"
+    )
 
 
 def test_golden_dataset_faithfulness_meets_threshold(golden_dataset_report: EvalReport) -> None:
